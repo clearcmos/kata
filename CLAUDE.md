@@ -48,6 +48,38 @@ cli/kata               the workstation CLI, Python 3 stdlib only
 automations/           the source of truth, one JSON file per automation
 ```
 
+## Extending the vocabulary
+
+The vocabulary is meant to grow on demand. When a wanted automation cannot be expressed, the
+answer is to add the type, not to report it unsupported or to bend the request into an awkward
+combination of existing ones. That is the trade made by having no scripting escape hatch.
+
+Adding one, in order:
+
+1. A `TypeSpec` in `Vocabulary` (`model/Spec.kt`): id, doc, fields, and any `Requirement` the
+   platform gates it behind. The doc strings are read by an authoring agent through
+   `/capabilities`, so write them as instructions, not labels.
+2. The implementation: a branch in `ActionRunner.execute`, `ConditionEvaluator.evaluate`, or
+   `TriggerRegistry` plus a `TriggerMatcher` case if the trigger takes filter fields.
+3. A manifest permission if needed, and a `Requirement` arm in `Capabilities.status` naming the
+   exact remedy (an adb command, or the Settings path) so an unmet prerequisite is actionable.
+4. A cross-field rule in `Validator.checkStepInvariants` if the spec cannot express it.
+5. A unit test if there is pure logic worth pinning. Anything touching an Android API is
+   verified on the device instead.
+
+Then:
+
+```
+nix develop --command gradle ktlintFormat
+nix develop --command gradle ktlintCheck lintDebug testDebugUnitTest assembleDebug
+```
+
+install with the `pm grant` block below (an install clears every grant), and confirm the new
+type end to end with `cli/kata simulate` or `cli/kata fire`.
+
+Push back only when the platform genuinely cannot do it without root or Shizuku, and say which
+of the two it would take.
+
 ## Design decisions worth keeping
 
 - **The spec registry is the single source of the vocabulary.** `Vocabulary` in `Spec.kt`
