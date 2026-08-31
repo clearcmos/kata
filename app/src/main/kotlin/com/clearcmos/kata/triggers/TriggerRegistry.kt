@@ -9,12 +9,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.database.ContentObserver
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import android.net.wifi.WifiInfo
 import android.os.BatteryManager
+import android.os.Handler
+import android.os.Looper
+import android.provider.Settings
 import android.util.Log
 import androidx.core.net.toUri
 import com.clearcmos.kata.engine.Clock
@@ -39,6 +43,7 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
     private var lastBatteryLevel: Int? = null
     private var announcedWifi: Network? = null
     private val scheduledAlarmIds = mutableSetOf<String>()
+    private val settingObservers = mutableListOf<ContentObserver>()
 
     /** Tears down and rebuilds every registration to match the current rule set. */
     fun refresh() {
@@ -46,6 +51,7 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
         Log.i(TAG, "refreshing registrations for ${needed.sorted()}")
         registerSystemReceiver(needed)
         registerNetworkCallback(needed)
+        registerSettingObservers()
         scheduleAlarms()
     }
 
@@ -54,6 +60,7 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
         systemReceiver = null
         networkCallback?.let { runCatching { connectivityManager?.unregisterNetworkCallback(it) } }
         networkCallback = null
+        unregisterSettingObservers()
         cancelAlarms()
     }
 
@@ -189,6 +196,73 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
         runCatching { connectivityManager?.registerNetworkCallback(request, callback) }
             .onSuccess { networkCallback = callback }
             .onFailure { Log.e(TAG, "could not register network callback", it) }
+    }
+
+    // -- settings -----------------------------------------------------------------------
+
+    /**
+     * Watches exactly the settings keys the current rules name.
+     *
+     * Android has no broadcast for most settings, so a ContentObserver on the key's Uri is the
+     * only way to react to a Quick Settings tile or any other toggle that writes one. Observers
+     * are per key rather than blanket, because a blanket observer on the settings provider
+     * would wake the engine on every unrelated write the system makes.
+     */
+    private fun registerSettingObservers() {
+        unregisterSettingObservers()
+        val watched = store.enabled()
+            .map { it.resolved().trigger }
+            .filter { it.type == "setting_changed" }
+            .mapNotNull { trigger ->
+                val scope = trigger.args.optString("scope") ?: return@mapNotNull null
+                val key = trigger.args.optString("key") ?: return@mapNotNull null
+                scope to key
+            }
+            .distinct()
+        if (watched.isEmpty()) return
+
+        for ((scope, key) in watched) {
+            val uri = when (scope.lowercase()) {
+                "global" -> Settings.Global.getUriFor(key)
+                "secure" -> Settings.Secure.getUriFor(key)
+                "system" -> Settings.System.getUriFor(key)
+                else -> null
+            } ?: continue
+
+            val observer = object : ContentObserver(Handler(Looper.getMainLooper())) {
+                override fun onChange(selfChange: Boolean) {
+                    val value = readSetting(scope, key)
+                    engine.onEvent(
+                        TriggerEvent(
+                            "setting_changed",
+                            buildMap {
+                                put("scope", scope)
+                                put("key", key)
+                                value?.let { put("value", it) }
+                            }
+                        )
+                    )
+                }
+            }
+            runCatching { context.contentResolver.registerContentObserver(uri, false, observer) }
+                .onSuccess { settingObservers.add(observer) }
+                .onFailure { Log.e(TAG, "could not observe $scope/$key", it) }
+        }
+        Log.i(TAG, "observing ${settingObservers.size} setting(s)")
+    }
+
+    private fun readSetting(scope: String, key: String): String? = runCatching {
+        when (scope.lowercase()) {
+            "global" -> Settings.Global.getString(context.contentResolver, key)
+            "secure" -> Settings.Secure.getString(context.contentResolver, key)
+            "system" -> Settings.System.getString(context.contentResolver, key)
+            else -> null
+        }
+    }.getOrNull()
+
+    private fun unregisterSettingObservers() {
+        settingObservers.forEach { runCatching { context.contentResolver.unregisterContentObserver(it) } }
+        settingObservers.clear()
     }
 
     // -- alarms -------------------------------------------------------------------------

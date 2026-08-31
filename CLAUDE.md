@@ -163,6 +163,24 @@ screenshot:
 adb shell uiautomator dump /sdcard/win.xml && adb shell cat /sdcard/win.xml
 ```
 
+### Testing a setting_changed rule that watches adb_wifi_enabled
+
+The obvious test is destructive. Firing the rule needs `adb_wifi_enabled` to transition to 1,
+which means setting it to 0 first, and that kills the very connection running the test with no
+scripted way back. Do not do it.
+
+Verify the observer on a throwaway key instead. `settings put global <anything>` works with
+`WRITE_SECURE_SETTINGS` and a ContentObserver on its Uri fires normally:
+
+```
+settings put global kata_selftest 0    # rule with equals=1 must stay silent
+settings put global kata_selftest 1    # rule must fire
+settings delete global kata_selftest
+```
+
+That covers the machinery. The real tile toggle is then a one-off check for the user to run at
+the phone, which is also the only safe place to run it.
+
 ### Reboot survival, verified
 
 Tested on the S25 by rebooting and checking everything **before** opening the app, since

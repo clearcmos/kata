@@ -162,6 +162,17 @@ object Vocabulary {
                 listOf(Requirement.NOTIFICATION_LISTENER)
             ),
             TypeSpec(
+                "setting_changed",
+                SpecKind.TRIGGER,
+                "A system settings value changed. This is how you react to a Quick Settings tile " +
+                    "or any other toggle that writes a setting, since Android has no broadcast for most of them.",
+                listOf(
+                    enum("scope", "Which settings table.", listOf("global", "secure", "system")),
+                    str("key", "Setting name, for example adb_wifi_enabled."),
+                    str("equals", "Only fire when the new value is exactly this.", required = false)
+                )
+            ),
+            TypeSpec(
                 "app_foreground",
                 SpecKind.TRIGGER,
                 "An app came to the foreground. Omit package to fire on every app switch.",
@@ -411,6 +422,21 @@ object Vocabulary {
                 SpecKind.ACTION,
                 "Write a line into the run record. Useful for confirming a branch was taken.",
                 listOf(str("message", "Text to record."))
+            ),
+            TypeSpec(
+                "ssh",
+                SpecKind.ACTION,
+                "Run a command on another machine over SSH, with the key kata generates on first " +
+                    "use. Blocks until the command exits or the timeout passes, and records the exit " +
+                    "status and output. A host that is off or unreachable fails this action without " +
+                    "affecting anything else.",
+                listOf(
+                    str("host", "Hostname or IP address."),
+                    str("user", "Login name."),
+                    str("command", "Command to run. Runs without a login shell, so use absolute paths."),
+                    int("port", "SSH port.", required = false, default = 22),
+                    int("timeout_ms", "Connect and run timeout.", required = false, default = 8000)
+                )
             ),
             TypeSpec(
                 "global_action",

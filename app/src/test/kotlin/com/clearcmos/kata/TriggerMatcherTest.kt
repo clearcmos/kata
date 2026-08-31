@@ -153,4 +153,52 @@ class TriggerMatcherTest {
             )
         )
     }
+
+    @Test
+    fun `setting_changed matches on scope and key, not just type`() {
+        val trigger = Step(
+            "setting_changed",
+            Args(mapOf("scope" to "global", "key" to "adb_wifi_enabled"))
+        )
+        assertTrue(
+            TriggerMatcher.matches(
+                trigger,
+                TriggerEvent(
+                    "setting_changed",
+                    mapOf("scope" to "global", "key" to "adb_wifi_enabled", "value" to "1")
+                )
+            )
+        )
+        // Every watcher receives every setting_changed event, so a different key must not match.
+        assertFalse(
+            TriggerMatcher.matches(
+                trigger,
+                TriggerEvent(
+                    "setting_changed",
+                    mapOf("scope" to "global", "key" to "screen_brightness", "value" to "1")
+                )
+            )
+        )
+        assertFalse(
+            TriggerMatcher.matches(
+                trigger,
+                TriggerEvent(
+                    "setting_changed",
+                    mapOf("scope" to "secure", "key" to "adb_wifi_enabled", "value" to "1")
+                )
+            )
+        )
+    }
+
+    @Test
+    fun `setting_changed equals filters on the new value`() {
+        val trigger = Step(
+            "setting_changed",
+            Args(mapOf("scope" to "global", "key" to "adb_wifi_enabled", "equals" to "1"))
+        )
+        val on = mapOf("scope" to "global", "key" to "adb_wifi_enabled", "value" to "1")
+        val off = mapOf("scope" to "global", "key" to "adb_wifi_enabled", "value" to "0")
+        assertTrue(TriggerMatcher.matches(trigger, TriggerEvent("setting_changed", on)))
+        assertFalse(TriggerMatcher.matches(trigger, TriggerEvent("setting_changed", off)))
+    }
 }

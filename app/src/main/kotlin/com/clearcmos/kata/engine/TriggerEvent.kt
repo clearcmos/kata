@@ -48,6 +48,14 @@ object TriggerMatcher {
                 crossedDown || crossedUp
             }
 
+            // Every watcher receives every setting_changed event, so the key and scope are part
+            // of matching rather than something the registry can filter on its own.
+            "setting_changed" -> {
+                if (args.optString("key") != event.facts["key"]) return false
+                if (args.optString("scope") != event.facts["scope"]) return false
+                args.optString("equals")?.let { it == event.facts["value"] } ?: true
+            }
+
             "app_foreground", "app_background" ->
                 args.optString("package")?.let { it == event.facts["package"] } ?: true
 

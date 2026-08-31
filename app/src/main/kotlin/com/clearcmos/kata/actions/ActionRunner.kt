@@ -83,6 +83,7 @@ class ActionRunner(
                 "waited ${ms}ms"
             }
             "log" -> args.string("message")
+            "ssh" -> ssh(step)
             "global_action" -> globalAction(args.string("action"))
             "tap_ui" -> tapUi(step)
             "set_enabled" -> setEnabled(args.string("id"), args.bool("enabled"))
@@ -330,6 +331,26 @@ class ActionRunner(
         return "woke screen for ${seconds}s"
     }
 
+    private val ssh by lazy { SshClient(context) }
+
+    private fun ssh(step: Step): String {
+        val args = step.args
+        val host = args.string("host")
+        val user = args.string("user")
+        val result = ssh.run(
+            host = host,
+            user = user,
+            port = args.int("port", 22),
+            command = args.string("command"),
+            timeoutMs = args.int("timeout_ms", 8000)
+        )
+        val output = result.output.replace('\n', ' ').take(SSH_OUTPUT_PREVIEW)
+        if (result.exitStatus != 0) {
+            throw ActionError("$user@$host: exit ${result.exitStatus}${if (output.isBlank()) "" else " $output"}")
+        }
+        return "$user@$host: ok${if (output.isBlank()) "" else " $output"}"
+    }
+
     private fun accessibility(): KataAccessibilityService = KataAccessibilityService.instance
         ?: throw ActionError(
             "the accessibility service is not running; enable kata under " +
@@ -382,5 +403,6 @@ class ActionRunner(
         const val MAX_WAKE_SECONDS = 60
         const val RESPONSE_PREVIEW_CHARS = 200
         const val TTS_INIT_TIMEOUT_SECONDS = 5L
+        const val SSH_OUTPUT_PREVIEW = 200
     }
 }

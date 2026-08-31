@@ -84,22 +84,45 @@ generally assume the earlier ones landed.
 
 ## Vocabulary
 
-20 triggers, 11 conditions, 23 actions. `kata schema` prints all of them with their fields and
+21 triggers, 11 conditions, 24 actions. `kata schema` prints all of them with their fields and
 prerequisites. The short version:
 
 - **Triggers**: `manual`, `boot_completed`, `power_connected`, `power_disconnected`,
   `battery_level`, `screen_on`, `screen_off`, `wifi_connected`, `wifi_disconnected`,
   `bluetooth_connected`, `bluetooth_disconnected`, `headset_plugged`, `headset_unplugged`,
   `airplane_mode`, `time_of_day`, `interval`, `notification_posted`, `notification_removed`,
-  `app_foreground`, `app_background`
+  `app_foreground`, `app_background`, `setting_changed`
 - **Conditions**: `time_between`, `day_of_week`, `battery_below`, `battery_above`, `charging`,
   `screen_on`, `wifi_ssid`, `wifi_connected`, `dnd_active`, `app_installed`, `app_foreground`
 - **Actions**: `notify`, `cancel_notification`, `dnd`, `ringer_mode`, `volume`, `media`,
   `vibrate`, `torch`, `tts`, `http_request`, `launch_app`, `start_activity`, `broadcast`,
   `clipboard`, `secure_setting`, `global_setting`, `system_setting`, `wake_screen`, `wait`,
-  `log`, `set_enabled`, `global_action`, `tap_ui`
+  `log`, `set_enabled`, `global_action`, `tap_ui`, `ssh`
 
 `secure_setting` and `global_setting` reach a lot with `WRITE_SECURE_SETTINGS` granted over adb.
+
+`setting_changed` watches a Settings key with a ContentObserver. Android has no broadcast for
+most settings, so this is how you react to a Quick Settings tile or any other toggle that writes
+one. Observers are registered per key rather than blanket, so an unrelated system write does not
+wake the engine.
+
+`ssh` runs a command on another machine. kata generates an ECDSA keypair on first use and never
+exports the private half; the public key is mirrored to the app's external files directory,
+where `adb shell` can read it:
+
+```
+adb shell cat /sdcard/Android/data/com.clearcmos.kata/files/id_ecdsa.pub
+```
+
+Add that to `~/.ssh/authorized_keys` on the target. Restricting it there is worth the extra few
+characters, since a phone key rarely needs a shell:
+
+```
+restrict,command="/usr/local/bin/adb-reconnect" ecdsa-sha2-nistp256 AAAA... kata@android
+```
+
+An unreachable host, a refused key, and a changed host key produce three different messages,
+because they need three different fixes. The refused-key case prints the public key to install.
 
 `tap_ui` is the escape hatch for everything with no API at all: it finds a node on screen by
 text, content description, or view id, walks up to the nearest clickable ancestor, and taps it.
