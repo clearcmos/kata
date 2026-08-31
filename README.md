@@ -193,8 +193,11 @@ Lint runs with `warningsAsErrors = true`.
 
 ## Limits
 
-- Anything needing root or Shizuku is out of reach: toggling Wi-Fi or mobile data, force-stopping
-  apps, granting permissions. What `WRITE_SECURE_SETTINGS` covers is covered; the rest is not.
+- The target is a locked retail device. Root, custom ROMs, platform-key signing and Device Owner
+  provisioning are all out of scope permanently, so the ceiling is what a sideloaded app can
+  reach: normal and runtime permissions, `WRITE_SECURE_SETTINGS` granted over adb, and the
+  special access a user toggles in Settings. Some things stay impossible under that ceiling,
+  notably toggling Wi-Fi or mobile data through an API and force-stopping another app.
 - No scripting. Rules are declarative, and gaps are closed by adding a typed action rather than
   by an escape hatch. `http_request` covers most of what a script would have been used for by
   moving the logic to a server.

@@ -48,6 +48,34 @@ cli/kata               the workstation CLI, Python 3 stdlib only
 automations/           the source of truth, one JSON file per automation
 ```
 
+## The permission ceiling
+
+The target is a locked retail Galaxy S25. **Root, custom ROMs, platform-key signing and Device
+Owner provisioning are permanently out of scope.** Do not design around them and do not raise
+them as rejected alternatives.
+
+Splitting work into a second app buys nothing: Android enforces permissions per UID, so a fresh
+APK has exactly this app's ceiling. New capability comes from a different class of grant, not
+from more apps, which is why every tier lives in kata behind a `Requirement`.
+
+What is reachable, in rough order of what it costs the user:
+
+| Tier | Cost | Unlocks |
+| --- | --- | --- |
+| Normal and runtime permissions | nothing, or one dialog | most of the current vocabulary |
+| `WRITE_SECURE_SETTINGS` | one `adb shell pm grant`, re-run after each install | `secure_setting`, `global_setting` |
+| Settings special access | a toggle the user taps | DND policy, notification listener, modify system settings |
+| AccessibilityService | a toggle the user taps | foreground-app detection, global actions, tapping UI with no API |
+| Shizuku | user starts it; re-armed over adb after a reboot | ADB shell privilege: `svc`, `pm`, `am force-stop`, `cmd` |
+
+Shizuku is not root. It runs at ADB shell privilege and is available on this device; the user
+already has `adb-reconnect` and a wireless-debugging Quick Settings tile, so re-arming it is one
+command. It stays a live option unless the user says otherwise.
+
+Genuinely out of reach under this ceiling: toggling Wi-Fi or mobile data through an API
+(removed for third-party callers in Android 10) and force-stopping another app. Say so in one
+line and stop there.
+
 ## Extending the vocabulary
 
 The vocabulary is meant to grow on demand. When a wanted automation cannot be expressed, the
