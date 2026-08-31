@@ -48,6 +48,9 @@ object TriggerMatcher {
                 crossedDown || crossedUp
             }
 
+            "app_foreground", "app_background" ->
+                args.optString("package")?.let { it == event.facts["package"] } ?: true
+
             "notification_posted", "notification_removed" ->
                 matchesNotification(trigger, event)
 

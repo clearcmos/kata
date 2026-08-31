@@ -84,22 +84,34 @@ generally assume the earlier ones landed.
 
 ## Vocabulary
 
-18 triggers, 10 conditions, 21 actions. `kata schema` prints all of them with their fields and
+20 triggers, 11 conditions, 23 actions. `kata schema` prints all of them with their fields and
 prerequisites. The short version:
 
 - **Triggers**: `manual`, `boot_completed`, `power_connected`, `power_disconnected`,
   `battery_level`, `screen_on`, `screen_off`, `wifi_connected`, `wifi_disconnected`,
   `bluetooth_connected`, `bluetooth_disconnected`, `headset_plugged`, `headset_unplugged`,
-  `airplane_mode`, `time_of_day`, `interval`, `notification_posted`, `notification_removed`
+  `airplane_mode`, `time_of_day`, `interval`, `notification_posted`, `notification_removed`,
+  `app_foreground`, `app_background`
 - **Conditions**: `time_between`, `day_of_week`, `battery_below`, `battery_above`, `charging`,
-  `screen_on`, `wifi_ssid`, `wifi_connected`, `dnd_active`, `app_installed`
+  `screen_on`, `wifi_ssid`, `wifi_connected`, `dnd_active`, `app_installed`, `app_foreground`
 - **Actions**: `notify`, `cancel_notification`, `dnd`, `ringer_mode`, `volume`, `media`,
   `vibrate`, `torch`, `tts`, `http_request`, `launch_app`, `start_activity`, `broadcast`,
   `clipboard`, `secure_setting`, `global_setting`, `system_setting`, `wake_screen`, `wait`,
-  `log`, `set_enabled`
+  `log`, `set_enabled`, `global_action`, `tap_ui`
 
-`secure_setting` and `global_setting` are the wide ones. With `WRITE_SECURE_SETTINGS` granted
-over adb, they reach settings that normally need root or Shizuku.
+`secure_setting` and `global_setting` reach a lot with `WRITE_SECURE_SETTINGS` granted over adb.
+
+`tap_ui` is the escape hatch for everything with no API at all: it finds a node on screen by
+text, content description, or view id, walks up to the nearest clickable ancestor, and taps it.
+That is how you reach a Quick Settings tile the platform will not let an app toggle. It is
+brittle by nature, since it matches what is drawn, so a vendor UI change can break a rule. When
+a tap finds nothing it reports every label it could see, which is usually enough to fix the
+matcher in one go:
+
+```
+ERR tap_ui: no tappable node matched text="Aeroplane mode"; saw: WiFi, Bluetooth,
+Wireless debug, Screen recorder, Do not disturb, Flashlight, Power saving, Flight mode, ...
+```
 
 ## The CLI
 
@@ -175,6 +187,12 @@ names each one and where it lives in Settings:
 - Do Not Disturb access, for the `dnd` and `ringer_mode` actions
 - Notification access, for the `notification_posted` and `notification_removed` triggers
 - Modify system settings, for the `system_setting` action
+- Accessibility, for `app_foreground` and `app_background`, the `app_foreground` condition, and
+  the `global_action` and `tap_ui` actions
+
+Accessibility is the widest grant kata asks for: while it is on, kata can read everything drawn
+on screen. It is off by default, nothing enables it implicitly, and turning it off in
+Settings > Accessibility > Installed apps disables exactly those five types and nothing else.
 
 On One UI, also exclude kata from "Put unused apps to sleep" (Settings > Battery > Background
 usage limits). Samsung will otherwise stop the service after a day or two of the app not being
@@ -198,6 +216,7 @@ Lint runs with `warningsAsErrors = true`.
   reach: normal and runtime permissions, `WRITE_SECURE_SETTINGS` granted over adb, and the
   special access a user toggles in Settings. Some things stay impossible under that ceiling,
   notably toggling Wi-Fi or mobile data through an API and force-stopping another app.
+  `tap_ui` can often reach the same switch by tapping its Quick Settings tile instead.
 - No scripting. Rules are declarative, and gaps are closed by adding a typed action rather than
   by an escape hatch. `http_request` covers most of what a script would have been used for by
   moving the logic to a server.

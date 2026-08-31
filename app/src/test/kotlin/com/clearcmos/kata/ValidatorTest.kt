@@ -147,4 +147,28 @@ class ValidatorTest {
         assertEquals(errors.toString(), 1, errors.size)
         assertTrue(errors.toString(), errors.first().contains("must be one of music"))
     }
+
+    @Test
+    fun `tap_ui needs at least one matcher`() {
+        val errors = Validator.validate(
+            automation(actions = listOf(Step("tap_ui", Args(mapOf("timeout_ms" to 1000)))))
+        )
+        assertTrue(errors.toString(), errors.any { it.contains("needs one of 'text'") })
+    }
+
+    @Test
+    fun `tap_ui with a single matcher is accepted`() {
+        val errors = Validator.validate(
+            automation(actions = listOf(Step("tap_ui", Args(mapOf("text" to "Wi-Fi")))))
+        )
+        assertEquals(emptyList<String>(), errors)
+    }
+
+    @Test
+    fun `an unknown global action names the allowed set`() {
+        val errors = Validator.validate(
+            automation(actions = listOf(Step("global_action", Args(mapOf("action" to "reboot")))))
+        )
+        assertTrue(errors.toString(), errors.any { it.contains("must be one of back, home, recents") })
+    }
 }

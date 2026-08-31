@@ -8,6 +8,7 @@ import android.os.Build
 import android.provider.Settings
 import com.clearcmos.kata.model.Requirement
 import com.clearcmos.kata.model.Vocabulary
+import com.clearcmos.kata.triggers.KataAccessibilityService
 import com.clearcmos.kata.triggers.KataNotificationListener
 
 /**
@@ -63,6 +64,13 @@ class Capabilities(private val context: Context) {
             Status(
                 granted(Manifest.permission.BLUETOOTH_CONNECT),
                 "Open kata and allow nearby devices; without it Bluetooth rules match on MAC address only"
+            )
+
+        Requirement.ACCESSIBILITY ->
+            Status(
+                KataAccessibilityService.isEnabled(context),
+                "Settings > Accessibility > Installed apps > kata. Lets kata see which app is in " +
+                    "front and tap on-screen controls; it can read screen content while on."
             )
 
         Requirement.EXACT_ALARM ->

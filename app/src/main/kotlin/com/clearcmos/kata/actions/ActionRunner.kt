@@ -1,6 +1,7 @@
 package com.clearcmos.kata.actions
 
 import android.Manifest
+import android.accessibilityservice.AccessibilityService
 import android.app.Notification
 import android.app.NotificationManager
 import android.content.ClipData
@@ -22,6 +23,7 @@ import com.clearcmos.kata.engine.DeviceState
 import com.clearcmos.kata.engine.Notifications
 import com.clearcmos.kata.engine.Store
 import com.clearcmos.kata.model.Step
+import com.clearcmos.kata.triggers.KataAccessibilityService
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.CountDownLatch
@@ -81,6 +83,8 @@ class ActionRunner(
                 "waited ${ms}ms"
             }
             "log" -> args.string("message")
+            "global_action" -> globalAction(args.string("action"))
+            "tap_ui" -> tapUi(step)
             "set_enabled" -> setEnabled(args.string("id"), args.bool("enabled"))
             else -> throw ActionError("unknown action type '${step.type}'")
         }
@@ -324,6 +328,47 @@ class ActionRunner(
             )
         lock.acquire(seconds.coerceIn(1, MAX_WAKE_SECONDS) * 1000L)
         return "woke screen for ${seconds}s"
+    }
+
+    private fun accessibility(): KataAccessibilityService = KataAccessibilityService.instance
+        ?: throw ActionError(
+            "the accessibility service is not running; enable kata under " +
+                "Settings > Accessibility > Installed apps"
+        )
+
+    private fun globalAction(action: String): String {
+        val code = when (action.lowercase()) {
+            "back" -> AccessibilityService.GLOBAL_ACTION_BACK
+            "home" -> AccessibilityService.GLOBAL_ACTION_HOME
+            "recents" -> AccessibilityService.GLOBAL_ACTION_RECENTS
+            "notifications" -> AccessibilityService.GLOBAL_ACTION_NOTIFICATIONS
+            "quick_settings" -> AccessibilityService.GLOBAL_ACTION_QUICK_SETTINGS
+            "lock_screen" -> AccessibilityService.GLOBAL_ACTION_LOCK_SCREEN
+            "screenshot" -> AccessibilityService.GLOBAL_ACTION_TAKE_SCREENSHOT
+            "dismiss_shade" -> AccessibilityService.GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE
+            "power_dialog" -> AccessibilityService.GLOBAL_ACTION_POWER_DIALOG
+            else -> throw ActionError("unknown global action '$action'")
+        }
+        if (!accessibility().runGlobalAction(code)) throw ActionError("the system refused global action '$action'")
+        return "performed $action"
+    }
+
+    private fun tapUi(step: Step): String {
+        val args = step.args
+        val matcher = KataAccessibilityService.NodeMatcher(
+            text = args.optString("text"),
+            contentDescription = args.optString("content_description"),
+            viewId = args.optString("view_id"),
+            exact = args.bool("exact", false)
+        )
+        val service = accessibility()
+        val clicked = service.tap(matcher, args.int("timeout_ms", 3000))
+        if (clicked != null) return "tapped \"$clicked\""
+        // A tap that finds nothing is the most common failure here, and the useful thing to
+        // report is what was actually on screen rather than only what was wanted.
+        val visible = service.visibleLabels()
+        val sawWhat = if (visible.isEmpty()) "nothing readable on screen" else "saw: " + visible.joinToString(", ")
+        throw ActionError("no tappable node matched ${matcher.describe()}; $sawWhat")
     }
 
     private fun setEnabled(id: String, enabled: Boolean): String {

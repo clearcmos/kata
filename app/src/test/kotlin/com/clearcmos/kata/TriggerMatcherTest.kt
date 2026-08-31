@@ -109,4 +109,48 @@ class TriggerMatcherTest {
             )
         )
     }
+
+    @Test
+    fun `an app filter matches only its package`() {
+        val trigger = Step("app_foreground", Args(mapOf("package" to "com.instagram.android")))
+        assertTrue(
+            TriggerMatcher.matches(
+                trigger,
+                TriggerEvent("app_foreground", mapOf("package" to "com.instagram.android"))
+            )
+        )
+        assertFalse(
+            TriggerMatcher.matches(
+                trigger,
+                TriggerEvent("app_foreground", mapOf("package" to "com.android.chrome"))
+            )
+        )
+    }
+
+    @Test
+    fun `an unfiltered app trigger fires on every switch`() {
+        assertTrue(
+            TriggerMatcher.matches(
+                Step("app_foreground", Args.EMPTY),
+                TriggerEvent("app_foreground", mapOf("package" to "anything"))
+            )
+        )
+    }
+
+    @Test
+    fun `foreground and background are distinct events`() {
+        val leaving = Step("app_background", Args(mapOf("package" to "com.instagram.android")))
+        assertTrue(
+            TriggerMatcher.matches(
+                leaving,
+                TriggerEvent("app_background", mapOf("package" to "com.instagram.android"))
+            )
+        )
+        assertFalse(
+            TriggerMatcher.matches(
+                leaving,
+                TriggerEvent("app_foreground", mapOf("package" to "com.instagram.android"))
+            )
+        )
+    }
 }

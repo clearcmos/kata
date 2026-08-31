@@ -173,6 +173,11 @@ object Validator {
                     )
                 }
             }
+            "tap_ui" ->
+                if (!step.args.has("text") && !step.args.has("content_description") && !step.args.has("view_id")) {
+                    errors.add("$path needs one of 'text', 'content_description', or 'view_id'")
+                }
+
             "http_request" ->
                 step.args.optString("url")?.let {
                     if (!it.startsWith("http://") && !it.startsWith("https://")) {

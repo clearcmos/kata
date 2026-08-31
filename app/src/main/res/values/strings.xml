@@ -20,4 +20,5 @@
     <string name="run_result">%1$s in %2$dms</string>
     <string name="run_failed">failed: %1$s</string>
     <string name="last_run">%1$s \u00b7 %2$s</string>
+    <string name="accessibility_description">Lets kata react to which app is in the foreground, and tap on-screen controls that have no API behind them. kata can read screen content while this is on.</string>
 </resources>

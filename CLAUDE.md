@@ -65,7 +65,7 @@ What is reachable, in rough order of what it costs the user:
 | Normal and runtime permissions | nothing, or one dialog | most of the current vocabulary |
 | `WRITE_SECURE_SETTINGS` | one `adb shell pm grant`, re-run after each install | `secure_setting`, `global_setting` |
 | Settings special access | a toggle the user taps | DND policy, notification listener, modify system settings |
-| AccessibilityService | a toggle the user taps | foreground-app detection, global actions, tapping UI with no API |
+| AccessibilityService | a toggle the user taps | **implemented**: `app_foreground` / `app_background` triggers, `app_foreground` condition, `global_action` and `tap_ui` actions |
 | Shizuku | user starts it; re-armed over adb after a reboot | ADB shell privilege: `svc`, `pm`, `am force-stop`, `cmd` |
 
 Shizuku is not root. It runs at ADB shell privilege and is available on this device; the user
@@ -162,6 +162,39 @@ screenshot:
 ```
 adb shell uiautomator dump /sdcard/win.xml && adb shell cat /sdcard/win.xml
 ```
+
+### The accessibility service is unbound and rebound at will
+
+The platform recycles an AccessibilityService on its own schedule. Observed in a normal session,
+with nothing being reinstalled:
+
+```
+22:47:33 I KataA11y: accessibility service unbound
+22:47:34 I KataA11y: accessibility service connected
+```
+
+Anything cached in `onAccessibilityEvent` is therefore lost without warning, and the first
+symptom is subtle: the foreground-app condition reported "unknown" while the app was plainly in
+front, and `app_background` silently stopped firing because the edge detector had no previous
+value to compare against.
+
+Two rules follow, and both are load-bearing:
+
+- **Seed on connect.** `onServiceConnected` calls `activeApplicationPackage()` so the cache is
+  populated before any event arrives. Without it the first app switch after every rebind emits
+  no `app_background` at all.
+- **Never read the cache from outside.** `currentPackage` queries the window list live and
+  returns null when the service is not bound. The cached field is private and exists only so the
+  event handler can tell a real switch from a repeat. A stale cached value is indistinguishable
+  from a correct one at the call site.
+
+Related: `event.packageName` on `TYPE_WINDOW_STATE_CHANGED` is whatever raised the event, which
+includes keyboards, toasts and popups. Reading the active `TYPE_APPLICATION` window out of
+`getWindows()` instead is what stops an IME appearing over an app from reading as an app switch.
+That needs `flagRetrieveInteractiveWindows` in the service config.
+
+Note also that the node carrying a label is usually not the clickable one, so `tap_ui` walks up
+to the nearest clickable ancestor before performing `ACTION_CLICK`.
 
 ### The API token path
 

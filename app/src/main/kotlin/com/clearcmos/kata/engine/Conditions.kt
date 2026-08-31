@@ -1,6 +1,7 @@
 package com.clearcmos.kata.engine
 
 import com.clearcmos.kata.model.Step
+import com.clearcmos.kata.triggers.KataAccessibilityService
 
 /** The outcome of one condition, carrying why it decided that so the run log can show it. */
 data class ConditionResult(val matched: Boolean, val detail: String)
@@ -78,6 +79,13 @@ class ConditionEvaluator(private val device: DeviceState) {
                 val want = args.bool("value")
                 val actual = device.isDndActive()
                 ConditionResult(actual == want, "dnd=$actual, want $want")
+            }
+
+            "app_foreground" -> {
+                val want = args.string("package")
+                val actual = KataAccessibilityService.currentPackage
+                    ?: return ConditionResult(false, "foreground app unknown; enable kata under Accessibility")
+                ConditionResult(actual == want, "foreground=$actual, want $want")
             }
 
             "app_installed" -> {

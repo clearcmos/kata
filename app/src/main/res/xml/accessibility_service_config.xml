@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  typeWindowStateChanged alone is enough for foreground detection; subscribing to more event
+  types would wake the service on every scroll and text change for no gain.
+
+  flagRetrieveInteractiveWindows is what makes getWindows() usable, which is how an app switch
+  is told apart from a keyboard or a popup appearing over the same app. flagReportViewIds is
+  what lets tap_ui match on a view id rather than only on visible text.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagRetrieveInteractiveWindows|flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/accessibility_description"
+    android:notificationTimeout="100"
+    android:settingsActivity="com.clearcmos.kata.ui.MainActivity" />

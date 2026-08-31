@@ -21,7 +21,8 @@ enum class Requirement {
     DND_POLICY,
     LOCATION,
     BLUETOOTH,
-    EXACT_ALARM
+    EXACT_ALARM,
+    ACCESSIBILITY
 }
 
 data class FieldSpec(
@@ -161,6 +162,20 @@ object Vocabulary {
                 listOf(Requirement.NOTIFICATION_LISTENER)
             ),
             TypeSpec(
+                "app_foreground",
+                SpecKind.TRIGGER,
+                "An app came to the foreground. Omit package to fire on every app switch.",
+                listOf(str("package", "Only fire when this package comes forward.", required = false)),
+                listOf(Requirement.ACCESSIBILITY)
+            ),
+            TypeSpec(
+                "app_background",
+                SpecKind.TRIGGER,
+                "An app left the foreground. Omit package to fire on every app switch.",
+                listOf(str("package", "Only fire when this package is the one being left.", required = false)),
+                listOf(Requirement.ACCESSIBILITY)
+            ),
+            TypeSpec(
                 "notification_removed",
                 SpecKind.TRIGGER,
                 "A notification was dismissed or cancelled.",
@@ -228,6 +243,13 @@ object Vocabulary {
                 SpecKind.CONDITION,
                 "Do Not Disturb state matches.",
                 listOf(bool("value", "true to require DND on."))
+            ),
+            TypeSpec(
+                "app_foreground",
+                SpecKind.CONDITION,
+                "A package is in the foreground right now.",
+                listOf(str("package", "Package name to require in front.")),
+                listOf(Requirement.ACCESSIBILITY)
             ),
             TypeSpec(
                 "app_installed",
@@ -389,6 +411,42 @@ object Vocabulary {
                 SpecKind.ACTION,
                 "Write a line into the run record. Useful for confirming a branch was taken.",
                 listOf(str("message", "Text to record."))
+            ),
+            TypeSpec(
+                "global_action",
+                SpecKind.ACTION,
+                "Perform a system navigation action, the same ones the gesture bar and shade expose.",
+                listOf(
+                    enum(
+                        "action",
+                        "Which action.",
+                        listOf(
+                            "back", "home", "recents", "notifications", "quick_settings",
+                            "lock_screen", "screenshot", "dismiss_shade", "power_dialog"
+                        )
+                    )
+                ),
+                listOf(Requirement.ACCESSIBILITY)
+            ),
+            TypeSpec(
+                "tap_ui",
+                SpecKind.ACTION,
+                "Find something on screen and tap it. The escape hatch for anything with no API behind " +
+                    "it, and brittle by nature: it matches what is drawn, so a vendor UI change can break " +
+                    "it. Give one of text, content_description, or view_id.",
+                listOf(
+                    str("text", "Visible text to match.", required = false),
+                    str("content_description", "Accessibility label to match.", required = false),
+                    str("view_id", "Full view id, e.g. com.android.settings:id/switch_widget.", required = false),
+                    bool(
+                        "exact",
+                        "Require the whole label to match rather than contain it.",
+                        required = false,
+                        default = false
+                    ),
+                    int("timeout_ms", "How long to wait for the target to appear.", required = false, default = 3000)
+                ),
+                listOf(Requirement.ACCESSIBILITY)
             ),
             TypeSpec(
                 "set_enabled",
