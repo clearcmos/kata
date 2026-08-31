@@ -1,0 +1,415 @@
+#!/usr/bin/env python3
+"""
+kata: drive the on-device automation runtime from the workstation.
+
+The repo is the source of truth. `kata push` replaces the whole on-device set atomically,
+so the phone always matches automations/ exactly or is left untouched with the reasons why.
+
+Automations are JSON rather than YAML on purpose: the file on disk, the request body, and
+what GET /automations returns are byte-identical, so there is no format to drift between the
+repo and the device, and no third-party parser to install.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import subprocess
+import sys
+import urllib.error
+import urllib.request
+from pathlib import Path
+
+PACKAGE = "com.clearcmos.kata"
+PORT = 8770
+TOKEN_PATH = f"/sdcard/Android/data/{PACKAGE}/files/api-token"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DEFAULT_DIR = REPO_ROOT / "automations"
+
+BOLD, DIM, RED, GREEN, YELLOW, RESET = "\033[1m", "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m"
+
+
+def colour(text: str, code: str) -> str:
+    return text if not sys.stdout.isatty() else f"{code}{text}{RESET}"
+
+
+def die(message: str, code: int = 1):
+    print(colour("error: ", RED) + message, file=sys.stderr)
+    raise SystemExit(code)
+
+
+# -- adb -------------------------------------------------------------------------------
+
+
+def adb(*args: str, check: bool = True) -> str:
+    if shutil.which("adb") is None:
+        die("adb is not on PATH")
+    result = subprocess.run(["adb", *args], capture_output=True, text=True)
+    if check and result.returncode != 0:
+        die(f"adb {' '.join(args)} failed: {result.stderr.strip() or result.stdout.strip()}")
+    return result.stdout
+
+
+def ensure_device():
+    lines = [l for l in adb("devices").splitlines()[1:] if l.strip() and "device" in l.split()]
+    if not lines:
+        die("no adb device. Run adb-reconnect to connect, or check wireless debugging on the phone.")
+
+
+def ensure_forward():
+    # Idempotent: adb replaces an existing rule for the same local port.
+    adb("forward", f"tcp:{PORT}", f"tcp:{PORT}")
+
+
+def read_token() -> str:
+    token = adb("shell", "cat", TOKEN_PATH).strip()
+    if not token:
+        die(
+            "could not read the API token. Open kata on the phone once so it writes "
+            f"{TOKEN_PATH}, then retry."
+        )
+    return token
+
+
+# -- http ------------------------------------------------------------------------------
+
+
+class Api:
+    def __init__(self):
+        ensure_device()
+        ensure_forward()
+        self.token = read_token()
+
+    def request(self, method: str, path: str, payload=None):
+        url = f"http://127.0.0.1:{PORT}{path}"
+        body = json.dumps(payload).encode() if payload is not None else None
+        req = urllib.request.Request(url, data=body, method=method)
+        req.add_header("X-Kata-Token", self.token)
+        if body:
+            req.add_header("Content-Type", "application/json")
+        try:
+            with urllib.request.urlopen(req, timeout=90) as response:
+                return response.status, json.loads(response.read().decode() or "{}")
+        except urllib.error.HTTPError as e:
+            raw = e.read().decode()
+            try:
+                return e.code, json.loads(raw)
+            except json.JSONDecodeError:
+                return e.code, {"error": raw or e.reason}
+        except urllib.error.URLError as e:
+            die(
+                f"cannot reach the engine on 127.0.0.1:{PORT} ({e.reason}). "
+                "Open kata on the phone to start the service."
+            )
+
+
+# -- loading local files ----------------------------------------------------------------
+
+
+def load_dir(path: Path) -> list[dict]:
+    if not path.is_dir():
+        die(f"{path} is not a directory")
+    files = sorted(path.glob("*.json"))
+    if not files:
+        die(f"no .json automations in {path}")
+    out = []
+    for f in files:
+        try:
+            data = json.loads(f.read_text())
+        except json.JSONDecodeError as e:
+            die(f"{f.name}: invalid JSON: {e}")
+        # One file per automation keeps diffs readable and ids traceable to a filename.
+        if not isinstance(data, dict):
+            die(f"{f.name}: expected a single automation object")
+        data.setdefault("id", f.stem)
+        out.append(data)
+    return out
+
+
+def print_problems(problems):
+    if isinstance(problems, dict):
+        for key, errors in problems.items():
+            print(f"  {colour(key, BOLD)}")
+            for error in errors:
+                print(f"    - {error}")
+    else:
+        for error in problems:
+            print(f"    - {error}")
+
+
+# -- commands --------------------------------------------------------------------------
+
+
+def cmd_push(args):
+    automations = load_dir(Path(args.dir))
+    api = Api()
+    # Parameter values belong to the phone, so a sync keeps them unless asked otherwise.
+    path = "/automations" + ("?reset_params=true" if args.reset_params else "")
+    status, body = api.request("PUT", path, {"automations": automations})
+    if status == 200:
+        print(colour(f"installed {body['installed']} automation(s)", GREEN))
+        for name in body["ids"]:
+            print(f"  {name}")
+        return
+    print(colour(f"nothing installed ({status})", RED))
+    print_problems(body.get("problems", [body.get("error", "unknown")]))
+    raise SystemExit(1)
+
+
+def cmd_validate(args):
+    automations = load_dir(Path(args.dir))
+    api = Api()
+    failed = 0
+    for automation in automations:
+        status, body = api.request("POST", "/validate", automation)
+        name = automation.get("id", "?")
+        if body.get("valid"):
+            unmet = body.get("unmet") or []
+            mark = colour("ok", GREEN) if not unmet else colour("ok, ungranted", YELLOW)
+            print(f"{mark}  {name}")
+            for item in unmet:
+                print(f"      {item}")
+        else:
+            failed += 1
+            print(f"{colour('bad', RED)} {name}")
+            print_problems(body.get("problems", []))
+    raise SystemExit(1 if failed else 0)
+
+
+def cmd_list(args):
+    status, body = Api().request("GET", "/automations")
+    automations = body.get("automations", [])
+    if not automations:
+        print("no automations installed")
+        return
+    _, runs_body = Api().request("GET", "/runs?limit=200")
+    last = {}
+    for run in runs_body.get("runs", []):
+        last.setdefault(run["automation_id"], run)
+    for automation in automations:
+        state = colour("on ", GREEN) if automation.get("enabled", True) else colour("off", DIM)
+        trigger = automation["trigger"]
+        detail = " ".join(f"{k}={v}" for k, v in trigger.items() if k != "type")
+        run = last.get(automation["id"])
+        tail = ""
+        if run:
+            colour_code = RED if run["outcome"] == "failed" else DIM
+            tail = colour(f"  [{run['outcome']}]", colour_code)
+        print(f"{state}  {automation['id']:<24} {trigger['type']} {detail}{tail}")
+
+
+def cmd_show(args):
+    status, body = Api().request("GET", f"/automations/{args.id}")
+    if status != 200:
+        die(body.get("error", "not found"))
+    print(json.dumps(body, indent=2))
+
+
+def cmd_fire(args):
+    status, body = Api().request("POST", f"/automations/{args.id}/fire", {"dry_run": args.dry})
+    if status != 200:
+        die(body.get("error", "fire failed"))
+    print_run(body["run"])
+
+
+def cmd_simulate(args):
+    facts = {}
+    for pair in args.facts:
+        if "=" not in pair:
+            die(f"facts must be key=value, got '{pair}'")
+        key, value = pair.split("=", 1)
+        facts[key] = value
+    status, body = Api().request(
+        "POST", "/simulate", {"type": args.type, "facts": facts, "dry_run": args.dry}
+    )
+    if status != 200:
+        die(body.get("error", "simulate failed"))
+    print(f"event: {body['event']}")
+    if not body["matched"]:
+        print(colour("no automation matched", YELLOW))
+        return
+    print(f"matched: {', '.join(body['matched'])}\n")
+    for run in body["runs"]:
+        print_run(run)
+
+
+def print_run(run):
+    outcome = run["outcome"]
+    code = {"ran": GREEN, "failed": RED, "skipped_conditions": YELLOW, "dry_run": DIM}.get(outcome, DIM)
+    print(f"{colour(outcome, code)}  {run['automation_id']}  ({run['duration_ms']}ms, via {run['source']})")
+    for step in run["steps"]:
+        mark = colour("ok ", GREEN) if step["ok"] else colour("ERR", RED)
+        print(f"  {mark} {step['type']}: {step['detail']}")
+    if run.get("error"):
+        print(f"  {colour(run['error'], RED)}")
+
+
+def cmd_runs(args):
+    query = f"/runs?limit={args.limit}" + (f"&id={args.id}" if args.id else "")
+    status, body = Api().request("GET", query)
+    runs = body.get("runs", [])
+    if not runs:
+        print("no runs recorded")
+        return
+    for run in runs:
+        print_run(run)
+        print()
+
+
+def cmd_enable(args):
+    verb = "enable" if args.enable else "disable"
+    status, body = Api().request("POST", f"/automations/{args.id}/{verb}")
+    if status != 200:
+        die(body.get("error", "not found"))
+    print(f"{args.id} {verb}d")
+
+
+def cmd_param(args):
+    status, body = Api().request(
+        "POST", f"/automations/{args.id}/params", {"key": args.key, "value": args.value}
+    )
+    if status != 200:
+        die(body.get("error", "not found"))
+    print(f"{args.id}.{args.key} = {args.value}")
+
+
+def cmd_delete(args):
+    status, body = Api().request("DELETE", f"/automations/{args.id}")
+    if status != 200:
+        die(body.get("error", "not found"))
+    print(f"deleted {args.id}")
+
+
+def cmd_capabilities(args):
+    status, body = Api().request("GET", "/capabilities")
+    if args.raw:
+        print(json.dumps(body, indent=2))
+        return
+    device = body["device"]
+    print(f"{device['manufacturer']} {device['model']}, Android {device['android_release']} (sdk {device['sdk_int']})\n")
+    for name, state in body["requirements"].items():
+        if state["satisfied"]:
+            print(f"{colour('ok ', GREEN)} {name}")
+        else:
+            print(f"{colour('NO ', YELLOW)} {name}\n      {state['remedy']}")
+    print()
+    for kind in ("triggers", "conditions", "actions"):
+        blocked = [t for t in body[kind] if not t["available"]]
+        print(f"{kind}: {len(body[kind]) - len(blocked)} available, {len(blocked)} blocked")
+        for spec in blocked:
+            print(f"    {spec['type']} needs {', '.join(spec['missing'])}")
+
+
+def cmd_schema(args):
+    status, body = Api().request("GET", "/schema")
+    if args.raw:
+        print(json.dumps(body, indent=2))
+        return
+    for kind in ("triggers", "conditions", "actions"):
+        print(colour(f"\n{kind.upper()}", BOLD))
+        for spec in body[kind]:
+            requires = f"  [needs {', '.join(spec['requires'])}]" if spec.get("requires") else ""
+            print(f"\n  {colour(spec['type'], BOLD)}{requires}\n    {spec['doc']}")
+            for field in spec["fields"]:
+                flag = "required" if field["required"] else "optional"
+                values = f" one of: {', '.join(field['values'])}" if field.get("values") else ""
+                default = f" (default {field['default']})" if field.get("default") is not None else ""
+                print(f"      {field['name']}: {field['type']}, {flag}{default}{values}")
+                print(f"        {field['doc']}")
+
+
+def cmd_doctor(args):
+    ensure_device()
+    ensure_forward()
+    print(f"{colour('ok ', GREEN)} adb device reachable")
+    token = read_token()
+    print(f"{colour('ok ', GREEN)} api token readable ({token[:8]}...)")
+    api = Api()
+    status, body = api.request("GET", "/health")
+    print(f"{colour('ok ', GREEN)} engine answering on 127.0.0.1:{PORT}")
+    cmd_capabilities(argparse.Namespace(raw=False))
+
+
+# -- entry point -----------------------------------------------------------------------
+
+
+def main():
+    parser = argparse.ArgumentParser(prog="kata", description=__doc__.strip().splitlines()[0])
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p = sub.add_parser("push", help="replace the device rule set with automations/")
+    p.add_argument("dir", nargs="?", default=str(DEFAULT_DIR))
+    p.add_argument(
+        "--reset-params",
+        action="store_true",
+        help="also overwrite parameter values edited on the phone with the repo's",
+    )
+    p.set_defaults(func=cmd_push)
+
+    p = sub.add_parser("validate", help="check automations/ against the device without installing")
+    p.add_argument("dir", nargs="?", default=str(DEFAULT_DIR))
+    p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("list", help="list installed automations")
+    p.set_defaults(func=cmd_list)
+
+    p = sub.add_parser("show", help="print one automation as installed")
+    p.add_argument("id")
+    p.set_defaults(func=cmd_show)
+
+    p = sub.add_parser("fire", help="run an automation now")
+    p.add_argument("id")
+    p.add_argument("--dry", action="store_true", help="evaluate conditions, do not run actions")
+    p.set_defaults(func=cmd_fire)
+
+    p = sub.add_parser("simulate", help="inject a fake trigger event")
+    p.add_argument("type", help="trigger type, for example wifi_connected")
+    p.add_argument("facts", nargs="*", help="key=value facts the event carries")
+    p.add_argument("--dry", action="store_true")
+    p.set_defaults(func=cmd_simulate)
+
+    p = sub.add_parser("runs", help="recent run records")
+    p.add_argument("--id", help="only this automation")
+    p.add_argument("--limit", type=int, default=10)
+    p.set_defaults(func=cmd_runs)
+
+    p = sub.add_parser("enable", help="arm an automation")
+    p.add_argument("id")
+    p.set_defaults(func=cmd_enable, enable=True)
+
+    p = sub.add_parser("disable", help="disarm an automation")
+    p.add_argument("id")
+    p.set_defaults(func=cmd_enable, enable=False)
+
+    p = sub.add_parser("param", help="set a parameter on an installed automation")
+    p.add_argument("id")
+    p.add_argument("key")
+    p.add_argument("value")
+    p.set_defaults(func=cmd_param)
+
+    p = sub.add_parser("delete", help="remove one automation from the device")
+    p.add_argument("id")
+    p.set_defaults(func=cmd_delete)
+
+    p = sub.add_parser("capabilities", help="what this device can actually do")
+    p.add_argument("--raw", action="store_true")
+    p.set_defaults(func=cmd_capabilities)
+
+    p = sub.add_parser("schema", help="the full trigger/condition/action vocabulary")
+    p.add_argument("--raw", action="store_true")
+    p.set_defaults(func=cmd_schema)
+
+    p = sub.add_parser("doctor", help="check the whole path from here to the engine")
+    p.set_defaults(func=cmd_doctor)
+
+    args = parser.parse_args()
+    args.func(args)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        raise SystemExit(130)

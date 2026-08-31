@@ -1,0 +1,14 @@
+{
+  "id": "arrive-home",
+  "name": "Arrive home",
+  "description": "On joining the home network, restore media volume and say so.",
+  "enabled": true,
+  "trigger": { "type": "wifi_connected", "ssid": "${params.ssid}" },
+  "actions": [
+    { "type": "volume", "stream": "music", "level": 60 },
+    { "type": "notify", "id": 2002, "title": "Home", "text": "Joined ${params.ssid}" }
+  ],
+  "params": [
+    { "key": "ssid", "label": "Home network name", "type": "string", "value": "CHANGE-ME" }
+  ]
+}

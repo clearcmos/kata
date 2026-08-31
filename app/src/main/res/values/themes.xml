@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      NoActionBar with a Toolbar in each layout. targetSdk 35+ forces edge-to-edge, and the
+      decor-provided action bar stops insetting the content frame under it, so the framework
+      bar silently draws over the top of the layout. Owning the bar as a real view means the
+      inset maths is visible and applied once, in onCreate.
+    -->
+    <style name="Theme.Kata" parent="Theme.Material3.DayNight.NoActionBar" />
+</resources>

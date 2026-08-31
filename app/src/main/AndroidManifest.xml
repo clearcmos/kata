@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- The engine runs as a persistent foreground service so triggers survive Doze. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- time_of_day triggers land on exact alarms; inexact would drift past the window. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+
+    <!-- The control API listens on loopback; http_request actions reach the network. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!--
+      Reading the connected SSID has required a location permission since Android 10.
+      Without it wifi_connected still fires, but the ssid field is unavailable and any
+      rule that matches on ssid is reported as unsatisfiable by /capabilities.
+    -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Android 12+ lets the user answer a fine-location request with approximate only,
+         so the coarse permission must be declared alongside it. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+
+    <!--
+      Granted once over adb; the platform declares it with the "development" protection
+      flag, which is what makes pm grant work for a normal app:
+        adb shell pm grant com.clearcmos.kata android.permission.WRITE_SECURE_SETTINGS
+      This is what the secure_setting and global_setting actions run on. Without it those
+      actions fail with a clear error rather than silently doing nothing.
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!--
+      launch_app targets arbitrary packages chosen at automation-authoring time, so a
+      static <queries> list cannot be written ahead of time. This app is sideloaded and
+      never shipped through Play, where this permission needs a declared exception.
+    -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:icon="@drawable/ic_launcher"
+        android:roundIcon="@drawable/ic_launcher_round"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Kata">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".ui.AutomationActivity"
+            android:exported="false"
+            android:parentActivityName=".ui.MainActivity" />
+
+        <!--
+          specialUse rather than dataSync: this service is not moving a bounded body of
+          data, it is holding trigger registrations open for the life of the device.
+        -->
+        <service
+            android:name=".engine.KataService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="User-configured device automation engine. Holds broadcast and connectivity trigger registrations open and runs the loopback control API so rules fire without the app being in the foreground." />
+        </service>
+
+        <!--
+          Opt-in surface. Reads every posted notification, so it stays unbound until the
+          user grants it in Settings and it is only started when a rule needs it.
+        -->
+        <service
+            android:name=".triggers.KataNotificationListener"
+            android:exported="false"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <receiver
+            android:name=".triggers.BootReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- AlarmManager delivers time_of_day and interval fires here. -->
+        <receiver
+            android:name=".triggers.AlarmReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

@@ -1,0 +1,11 @@
+{
+  "id": "charger-connected",
+  "name": "Charger connected",
+  "description": "A harmless rule that proves the engine is alive. Logs and vibrates on plug-in.",
+  "enabled": true,
+  "trigger": { "type": "power_connected" },
+  "actions": [
+    { "type": "log", "message": "charger plugged in" },
+    { "type": "vibrate", "ms": 150 }
+  ]
+}

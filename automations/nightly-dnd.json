@@ -1,0 +1,11 @@
+{
+  "id": "nightly-dnd",
+  "name": "Nightly Do Not Disturb",
+  "description": "Turn on priority-only DND on weeknights. Needs DND access granted on the phone.",
+  "enabled": true,
+  "trigger": { "type": "time_of_day", "at": "22:30", "days": ["sun", "mon", "tue", "wed", "thu"] },
+  "actions": [
+    { "type": "dnd", "mode": "priority" },
+    { "type": "log", "message": "night mode armed" }
+  ]
+}

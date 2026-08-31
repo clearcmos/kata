@@ -1,0 +1,29 @@
+# Gradle build outputs and per-checkout caches
+.gradle/
+build/
+app/build/
+.kotlin/
+
+# nix build result symlinks
+result
+result-*
+
+# direnv cache for the nix devShell
+.direnv/
+
+# IDE state
+.idea/
+*.iml
+
+# local.properties carries the machine-specific sdk.dir; the nix devShell provides ANDROID_HOME instead
+local.properties
+
+# Release signing. keystore.properties holds the store and key passwords in plain
+# text, and the keystore itself is the only thing that can publish an upgrade.
+keystore.properties
+*.jks
+*.keystore
+
+# Python bytecode from the cli
+__pycache__/
+*.pyc

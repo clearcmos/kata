@@ -1,0 +1,21 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[*.{json,yml,yaml,toml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[*.{kt,kts}]
+# The gradle plugin sets android.set(true); naming the style here too keeps ktlint from
+# defaulting to ktlint_official, whose wrapping rules disagree with Android Studio's.
+ktlint_code_style = android_studio
+max_line_length = 120

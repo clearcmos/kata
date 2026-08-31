@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">kata</string>
+    <string name="automations_title">Automations</string>
+    <string name="empty_state">No automations installed.\n\nPush some from your workstation:\nkata push</string>
+    <string name="run_now">Run now</string>
+    <string name="dry_run">Dry run</string>
+    <string name="recent_runs">Recent runs</string>
+    <string name="parameters">Parameters</string>
+    <string name="save_parameters">Save parameters</string>
+    <string name="never_run">Never run</string>
+    <string name="engine_running">Engine running</string>
+    <string name="engine_stopped">Engine stopped</string>
+    <string name="start_engine">Start engine</string>
+    <string name="all_grants_ok">All grants satisfied</string>
+    <string name="definition">Definition</string>
+    <string name="api_status">127.0.0.1:%1$s  token: %2$s\u2026</string>
+    <string name="grants_needed_list">Grants needed: %1$s</string>
+    <string name="params_saved">Parameters saved</string>
+    <string name="run_result">%1$s in %2$dms</string>
+    <string name="run_failed">failed: %1$s</string>
+    <string name="last_run">%1$s \u00b7 %2$s</string>
+</resources>
