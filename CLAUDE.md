@@ -379,6 +379,7 @@ on the JVM. Anything not listed here is expected to carry tests:
 | `DeviceState` | The one real implementation of `DeviceReadings`; the interface is what conditions are tested against |
 | `ActionRunner`, `SshClient` | Every branch performs a real device or network effect |
 | `ApiToken` | Generates and mirrors a key to app storage |
+| `Capabilities` | Every method reads live permission and system-service state. `CapabilityReporter`, the interface `ControlApi` depends on, is tested through a stub |
 | `triggers.*` | Broadcast receivers, the accessibility service, and alarm scheduling |
 
 The line to hold: logic that can run on the JVM lives in a class that does. `Engine` and
@@ -392,7 +393,7 @@ reason, with a `Context` convenience constructor that assembles the real ones.
 - **2026-08-31, dependency updates**: dependabot opens monthly PRs for github-actions and
   gradle. Versions live only in `gradle/libs.versions.toml` and the `*.lockfile` set; the flake
   pins the JDK, Gradle, and SDK separately and is bumped by hand.
-- **2026-08-31, coverage floor 87**: measured 89% at the time. Ratchet upward only.
+- **2026-08-31, coverage floor 90**: measured 92.9% at the time. Ratchet upward only.
 - **2026-08-31, real org.json in tests**: `android.jar` ships stubs that return null under
   `isReturnDefaultValues`, so every persistence test silently passed while writing nothing.
   `testImplementation(libs.json)` shadows the stub.

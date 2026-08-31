@@ -81,6 +81,7 @@ kover {
                     "com.clearcmos.kata.actions.ActionRunner*",
                     "com.clearcmos.kata.actions.SshClient*",
                     "com.clearcmos.kata.api.ApiToken*",
+                    "com.clearcmos.kata.api.Capabilities",
                     "com.clearcmos.kata.triggers.*"
                 )
             }
@@ -88,9 +89,9 @@ kover {
         variant("debug") {
             verify {
                 rule("line coverage of the JVM-testable modules") {
-                    // Ratchet: measured 89% on 2026-08-31. Raise this when coverage
+                    // Ratchet: measured 92.9% on 2026-08-31. Raise this when coverage
                     // rises, never lower it to make a change fit.
-                    minBound(87)
+                    minBound(90)
                 }
             }
         }
