@@ -6,7 +6,9 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import android.provider.Settings
+import com.clearcmos.kata.model.Automation
 import com.clearcmos.kata.model.Requirement
+import com.clearcmos.kata.model.SpecKind
 import com.clearcmos.kata.model.Vocabulary
 import com.clearcmos.kata.triggers.KataAccessibilityService
 import com.clearcmos.kata.triggers.KataNotificationListener
@@ -81,6 +83,26 @@ class Capabilities(private val context: Context) {
     }
 
     fun unmet(requirements: List<Requirement>): List<Requirement> = requirements.filterNot { status(it).satisfied }
+
+    /** Every requirement this automation's trigger, conditions, and actions declare. */
+    fun requirementsOf(automation: Automation): List<Requirement> {
+        val specs = listOfNotNull(Vocabulary.find(SpecKind.TRIGGER, automation.trigger.type)) +
+            automation.conditions.mapNotNull { Vocabulary.find(SpecKind.CONDITION, it.type) } +
+            automation.actions.mapNotNull { Vocabulary.find(SpecKind.ACTION, it.type) }
+        return specs.flatMap { it.requires }.distinct()
+    }
+
+    fun unmetFor(automation: Automation): List<Requirement> = unmet(requirementsOf(automation))
+
+    /**
+     * Unmet requirements across a set of automations.
+     *
+     * Scoped to what is actually installed on purpose. Reporting every ungranted capability
+     * regardless of whether anything needs one trains the reader to ignore the line, and then it
+     * fails to carry the one case that matters: a rule that is armed and cannot run.
+     */
+    fun unmetAcross(automations: List<Automation>): List<Requirement> =
+        unmet(automations.flatMap { requirementsOf(it) }.distinct())
 
     /** The full payload behind GET /capabilities: device facts, grants, and annotated vocabulary. */
     fun snapshot(): Map<String, Any?> {

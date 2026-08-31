@@ -11,8 +11,6 @@ import com.clearcmos.kata.engine.Kata
 import com.clearcmos.kata.engine.RunRecord
 import com.clearcmos.kata.model.Automation
 import com.clearcmos.kata.model.Json
-import com.clearcmos.kata.model.SpecKind
-import com.clearcmos.kata.model.Vocabulary
 import com.google.android.material.snackbar.Snackbar
 import java.text.DateFormat
 import java.util.Date
@@ -77,11 +75,7 @@ class AutomationActivity : AppCompatActivity() {
 
     private fun renderUnmet(automation: Automation) {
         val capabilities = Capabilities(this)
-        val specs =
-            listOfNotNull(Vocabulary.find(SpecKind.TRIGGER, automation.trigger.type)) +
-                automation.conditions.mapNotNull { Vocabulary.find(SpecKind.CONDITION, it.type) } +
-                automation.actions.mapNotNull { Vocabulary.find(SpecKind.ACTION, it.type) }
-        val unmet = capabilities.unmet(specs.flatMap { it.requires }.distinct())
+        val unmet = capabilities.unmetFor(automation)
         if (unmet.isEmpty()) {
             binding.unmet.visibility = android.view.View.GONE
             return

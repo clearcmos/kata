@@ -18,7 +18,6 @@ import com.clearcmos.kata.engine.Kata
 import com.clearcmos.kata.engine.KataService
 import com.clearcmos.kata.engine.RunRecord
 import com.clearcmos.kata.model.Automation
-import com.clearcmos.kata.model.Requirement
 import java.text.DateFormat
 import java.util.Date
 
@@ -87,8 +86,11 @@ class MainActivity : AppCompatActivity() {
                 KataService.token(this).take(TOKEN_PREVIEW)
             )
 
+        // Scoped to the armed rules. A standing list of every ungranted capability is noise
+        // when nothing needs one, and noise is what stops the line being read on the day a
+        // rule really is blocked.
         val capabilities = Capabilities(this)
-        val unmet = Requirement.entries.filterNot { capabilities.status(it).satisfied }
+        val unmet = capabilities.unmetAcross(automations.filter { it.enabled })
         binding.grantStatus.text =
             if (unmet.isEmpty()) {
                 getString(R.string.all_grants_ok)

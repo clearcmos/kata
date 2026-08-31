@@ -265,23 +265,8 @@ class ControlApi(private val context: Context, private val engine: Engine) {
 
     // -- helpers ------------------------------------------------------------------------
 
-    private fun unmetFor(automation: Automation): List<String> {
-        val specs =
-            listOfNotNull(
-                Vocabulary.find(com.clearcmos.kata.model.SpecKind.TRIGGER, automation.trigger.type)
-            ) +
-                automation.conditions.mapNotNull {
-                    Vocabulary.find(
-                        com.clearcmos.kata.model.SpecKind.CONDITION,
-                        it.type
-                    )
-                } +
-                automation.actions.mapNotNull { Vocabulary.find(com.clearcmos.kata.model.SpecKind.ACTION, it.type) }
-        return capabilities
-            .unmet(specs.flatMap { it.requires }.distinct())
-            .map { requirement ->
-                "${requirement.name.lowercase()}: ${capabilities.status(requirement).remedy}"
-            }
+    private fun unmetFor(automation: Automation): List<String> = capabilities.unmetFor(automation).map { requirement ->
+        "${requirement.name.lowercase()}: ${capabilities.status(requirement).remedy}"
     }
 
     private fun ok(payload: Map<String, Any?>) = HttpResponse(200, Json.toJson(payload).toString())
