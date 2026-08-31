@@ -362,7 +362,11 @@ nix develop --command gradle :app:assembleDebug                # build
 nix develop --command gradle ktlintFormat                      # fix formatting
 python3 -m unittest discover -s tests                          # CLI tests
 ruff check cli tests && ruff format --check cli tests          # CLI lint and format
+nix run nixpkgs#actionlint -- .github/workflows/ci.yml         # lint the workflow itself
 ```
+
+`ruff` is not installed on this machine; run it at the version CI pins with
+`uvx ruff@<RUFF_VERSION> ...`, reading the version out of `.github/workflows/ci.yml`.
 
 CI runs all of it on push and PR, plus `git diff --exit-code -- '*.lockfile'` so a dependency
 cannot move without a reviewed lockfile diff.
@@ -394,6 +398,10 @@ reason, with a `Context` convenience constructor that assembles the real ones.
   gradle. Versions live only in `gradle/libs.versions.toml` and the `*.lockfile` set; the flake
   pins the JDK, Gradle, and SDK separately and is bumped by hand.
 - **2026-08-31, coverage floor 90**: measured 92.9% at the time. Ratchet upward only.
+- **2026-08-31, ruff must be told about `cli/kata`**: the CLI is an executable script with no
+  `.py` extension, so ruff matched nothing under `cli/` and reported success while linting only
+  the test file. `extend-include = ["cli/kata"]` in `pyproject.toml` fixes it; the first real
+  run then found four errors. A linter that passes without reading the code is worse than none.
 - **2026-08-31, real org.json in tests**: `android.jar` ships stubs that return null under
   `isReturnDefaultValues`, so every persistence test silently passed while writing nothing.
   `testImplementation(libs.json)` shadows the stub.

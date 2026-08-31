@@ -14,7 +14,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -53,7 +52,7 @@ def adb(*args: str, check: bool = True) -> str:
 
 
 def ensure_device():
-    lines = [l for l in adb("devices").splitlines()[1:] if l.strip() and "device" in l.split()]
+    lines = [line for line in adb("devices").splitlines()[1:] if line.strip() and "device" in line.split()]
     if not lines:
         die("no adb device. Run adb-reconnect to connect, or check wireless debugging on the phone.")
 
@@ -294,7 +293,10 @@ def cmd_capabilities(args):
         print(json.dumps(body, indent=2))
         return
     device = body["device"]
-    print(f"{device['manufacturer']} {device['model']}, Android {device['android_release']} (sdk {device['sdk_int']})\n")
+    print(
+        f"{device['manufacturer']} {device['model']}, "
+        f"Android {device['android_release']} (sdk {device['sdk_int']})\n"
+    )
     for name, state in body["requirements"].items():
         if state["satisfied"]:
             print(f"{colour('ok ', GREEN)} {name}")
@@ -422,4 +424,4 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        raise SystemExit(130)
+        raise SystemExit(130) from None

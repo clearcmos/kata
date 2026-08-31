@@ -3,10 +3,10 @@
 [tool.ruff]
 line-length = 110
 target-version = "py311"
+# The CLI is an executable script with no .py extension. Without this ruff silently matches
+# nothing under cli/ and every check passes while linting the test file alone.
+extend-include = ["cli/kata"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "SIM"]
 
-[tool.ruff.lint.per-file-ignores]
-# The CLI is a single executable script without a .py extension; ruff still lints it by path.
-"cli/kata" = []

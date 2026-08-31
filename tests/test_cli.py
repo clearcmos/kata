@@ -72,9 +72,12 @@ class LoadDirTest(unittest.TestCase):
 
     def test_an_empty_directory_is_an_error_not_an_empty_push(self):
         # Silently pushing nothing would wipe the device's rule set.
-        with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(SystemExit), redirect_stdout(io.StringIO()):
-                kata.load_dir(Path(tmp))
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            self.assertRaises(SystemExit),
+            redirect_stdout(io.StringIO()),
+        ):
+            kata.load_dir(Path(tmp))
 
     def test_a_missing_directory_is_an_error(self):
         with self.assertRaises(SystemExit), redirect_stdout(io.StringIO()):
