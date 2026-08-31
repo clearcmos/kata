@@ -252,7 +252,8 @@ class ControlApi(private val context: Context, private val engine: Engine) {
 
         val event = TriggerEvent(type, facts)
         val matched = store.enabled().filter { TriggerMatcher.matches(it.resolved().trigger, event) }
-        val records = matched.map { engine.fireNow(it, source = "simulate:${event.describe()}", dryRun = dryRun) }
+        val records =
+            matched.map { engine.fireNow(it, "simulate:${event.describe()}", dryRun, event.facts) }
         return ok(
             mapOf(
                 "event" to event.describe(),

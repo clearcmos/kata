@@ -22,7 +22,8 @@ enum class Requirement {
     LOCATION,
     BLUETOOTH,
     EXACT_ALARM,
-    ACCESSIBILITY
+    ACCESSIBILITY,
+    SEND_SMS
 }
 
 data class FieldSpec(
@@ -31,7 +32,9 @@ data class FieldSpec(
     val required: Boolean,
     val doc: String,
     val values: List<String> = emptyList(),
-    val default: Any? = null
+    val default: Any? = null,
+    /** Values of this field are masked wherever arguments are printed. See [Sensitivity]. */
+    val sensitive: Boolean = false
 ) {
     fun toMap(): Map<String, Any?> = buildMap {
         put("name", name)
@@ -40,8 +43,20 @@ data class FieldSpec(
         put("doc", doc)
         if (values.isNotEmpty()) put("values", values)
         if (default != null) put("default", default)
+        if (sensitive) put("sensitive", true)
     }
 }
+
+/**
+ * How an action behaves if it runs twice.
+ *
+ * Only [IDEMPOTENT] actions may carry a `retry` count. The distinction is not cosmetic: an
+ * action phrased as a toggle recomputes from the live value, so retrying it undoes the first
+ * attempt rather than repeating it.
+ *
+ * Concept adapted from OpenTasker (MIT), which reaches the same conclusion.
+ */
+enum class RetrySafety { NEVER, IDEMPOTENT }
 
 enum class SpecKind { TRIGGER, CONDITION, ACTION }
 
@@ -50,18 +65,23 @@ data class TypeSpec(
     val kind: SpecKind,
     val doc: String,
     val fields: List<FieldSpec> = emptyList(),
-    val requires: List<Requirement> = emptyList()
+    val requires: List<Requirement> = emptyList(),
+    val retrySafety: RetrySafety = RetrySafety.NEVER,
+    /** Variables this action publishes for later steps, as name to description. */
+    val outputs: Map<String, String> = emptyMap()
 ) {
     fun toMap(): Map<String, Any?> = buildMap {
         put("type", id)
         put("doc", doc)
         put("fields", fields.map { it.toMap() })
         if (requires.isNotEmpty()) put("requires", requires.map { it.name.lowercase() })
+        if (kind == SpecKind.ACTION) put("retry_safety", retrySafety.name.lowercase())
+        if (outputs.isNotEmpty()) put("outputs", outputs)
     }
 }
 
-private fun str(name: String, doc: String, required: Boolean = true, default: Any? = null) =
-    FieldSpec(name, FieldType.STRING, required, doc, default = default)
+private fun str(name: String, doc: String, required: Boolean = true, default: Any? = null, sensitive: Boolean = false) =
+    FieldSpec(name, FieldType.STRING, required, doc, default = default, sensitive = sensitive)
 
 private fun int(name: String, doc: String, required: Boolean = true, default: Any? = null) =
     FieldSpec(name, FieldType.INT, required, doc, default = default)
@@ -77,7 +97,8 @@ private fun enum(name: String, doc: String, values: List<String>, required: Bool
 private fun strList(name: String, doc: String, required: Boolean = false) =
     FieldSpec(name, FieldType.STRING_LIST, required, doc)
 
-private fun obj(name: String, doc: String, required: Boolean = false) = FieldSpec(name, FieldType.OBJECT, required, doc)
+private fun obj(name: String, doc: String, required: Boolean = false, sensitive: Boolean = false) =
+    FieldSpec(name, FieldType.OBJECT, required, doc, sensitive = sensitive)
 
 private val DAYS = listOf("mon", "tue", "wed", "thu", "fri", "sat", "sun")
 
@@ -270,7 +291,7 @@ object Vocabulary {
             )
         )
 
-    val actions: List<TypeSpec> =
+    private val declaredActions: List<TypeSpec> =
         listOf(
             TypeSpec(
                 "notify",
@@ -351,8 +372,8 @@ object Vocabulary {
                         default = "GET"
                     ),
                     str("url", "Absolute URL."),
-                    obj("headers", "Header name to value."),
-                    str("body", "Request body, sent as-is.", required = false),
+                    obj("headers", "Header name to value.", sensitive = true),
+                    str("body", "Request body, sent as-is.", required = false, sensitive = true),
                     int("timeout_ms", "Connect and read timeout.", required = false, default = 10000)
                 )
             ),
@@ -475,12 +496,208 @@ object Vocabulary {
                 listOf(Requirement.ACCESSIBILITY)
             ),
             TypeSpec(
+                "var_set",
+                SpecKind.ACTION,
+                "Set a variable for later steps to read as \${vars.name}. With persist, it also " +
+                    "survives the run, which is how a rule remembers something between fires.",
+                listOf(
+                    str("name", "Variable name."),
+                    str("value", "Value to store."),
+                    bool("persist", "Keep it after this run ends.", required = false, default = false)
+                )
+            ),
+            TypeSpec(
+                "text_replace",
+                SpecKind.ACTION,
+                "Replace text and publish the result.",
+                listOf(
+                    str("text", "Input text."),
+                    str("find", "Substring or regular expression to look for."),
+                    str("replace", "Replacement text."),
+                    bool("regex", "Treat find as a regular expression.", required = false, default = false),
+                    str("into", "Variable to publish the result as.", required = false, default = "result")
+                )
+            ),
+            TypeSpec(
+                "text_match",
+                SpecKind.ACTION,
+                "Pull a value out of text with a regular expression. Fails when nothing matches, " +
+                    "so a rule that depends on the value stops rather than continuing with an empty one.",
+                listOf(
+                    str("text", "Input text."),
+                    str("pattern", "Regular expression."),
+                    int("group", "Capture group to take.", required = false, default = 1),
+                    str("into", "Variable to publish the match as.", required = false, default = "match")
+                )
+            ),
+            TypeSpec(
+                "datetime_format",
+                SpecKind.ACTION,
+                "Format a moment in time.",
+                listOf(
+                    str("format", "Pattern, for example yyyy-MM-dd HH:mm."),
+                    str("epoch_ms", "Moment to format. Defaults to now.", required = false),
+                    str("into", "Variable to publish the result as.", required = false, default = "now")
+                )
+            ),
+            TypeSpec(
+                "file_read",
+                SpecKind.ACTION,
+                "Read a text file from kata's storage.",
+                listOf(
+                    str("path", "Path relative to kata's files directory."),
+                    str("into", "Variable to publish the contents as.", required = false, default = "content")
+                )
+            ),
+            TypeSpec(
+                "file_write",
+                SpecKind.ACTION,
+                "Write a text file, replacing what was there.",
+                listOf(str("path", "Path relative to kata's files directory."), str("text", "Contents."))
+            ),
+            TypeSpec(
+                "file_append",
+                SpecKind.ACTION,
+                "Append a line to a text file.",
+                listOf(str("path", "Path relative to kata's files directory."), str("text", "Line to add."))
+            ),
+            TypeSpec(
+                "file_list",
+                SpecKind.ACTION,
+                "List a directory, newline separated.",
+                listOf(
+                    str("path", "Path relative to kata's files directory.", required = false, default = "."),
+                    str("into", "Variable to publish the listing as.", required = false, default = "files")
+                )
+            ),
+            TypeSpec(
+                "file_delete",
+                SpecKind.ACTION,
+                "Delete a file. Succeeds whether or not it was there.",
+                listOf(str("path", "Path relative to kata's files directory."))
+            ),
+            TypeSpec(
+                "download",
+                SpecKind.ACTION,
+                "Fetch a URL into a file in kata's storage.",
+                listOf(
+                    str("url", "Absolute URL."),
+                    str("path", "Destination path relative to kata's files directory."),
+                    int("timeout_ms", "Connect and read timeout.", required = false, default = 30000)
+                )
+            ),
+            TypeSpec(
+                "wol",
+                SpecKind.ACTION,
+                "Send a wake-on-LAN magic packet. Fire and forget: the packet is broadcast and " +
+                    "nothing reports whether the machine woke.",
+                listOf(
+                    str("mac", "Target MAC address, for example a1:b2:c3:d4:e5:f6."),
+                    str("broadcast", "Broadcast address.", required = false, default = "255.255.255.255"),
+                    int("port", "UDP port.", required = false, default = 9)
+                )
+            ),
+            TypeSpec(
+                "ping",
+                SpecKind.ACTION,
+                "Check whether a host answers. Fails the action when it does not, so it can gate " +
+                    "the rest of a rule.",
+                listOf(
+                    str("host", "Hostname or IP address."),
+                    int("timeout_ms", "How long to wait.", required = false, default = 3000),
+                    str(
+                        "into",
+                        "Variable to publish the round trip in milliseconds as.",
+                        required = false,
+                        default = "ping_ms"
+                    )
+                )
+            ),
+            TypeSpec(
+                "screenshot",
+                SpecKind.ACTION,
+                "Capture the screen into a PNG in kata's storage.",
+                listOf(
+                    str(
+                        "path",
+                        "Destination path relative to kata's files directory.",
+                        required = false,
+                        default = "screenshot.png"
+                    )
+                ),
+                listOf(Requirement.ACCESSIBILITY)
+            ),
+            TypeSpec(
+                "play_sound",
+                SpecKind.ACTION,
+                "Play a system tone.",
+                listOf(
+                    enum(
+                        "sound",
+                        "Which tone.",
+                        listOf("notification", "alarm", "ringtone"),
+                        required = false,
+                        default = "notification"
+                    )
+                )
+            ),
+            TypeSpec(
+                "sms_send",
+                SpecKind.ACTION,
+                "Send a text message. Carrier charges apply and there is no delivery confirmation.",
+                listOf(str("to", "Recipient number."), str("message", "Message body.", sensitive = true)),
+                listOf(Requirement.SEND_SMS)
+            ),
+            TypeSpec(
+                "clipboard_get",
+                SpecKind.ACTION,
+                "Read the clipboard. Android only allows this while kata is in the foreground, so " +
+                    "from a background rule it returns empty rather than failing.",
+                listOf(str("into", "Variable to publish the text as.", required = false, default = "clipboard"))
+            ),
+            TypeSpec(
                 "set_enabled",
                 SpecKind.ACTION,
                 "Enable or disable another automation, so rules can arm and disarm each other.",
                 listOf(str("id", "Target automation id."), bool("enabled", "New state."))
             )
         )
+
+    /**
+     * Actions that produce the same end state when run twice. Only these may carry a `retry`.
+     *
+     * Everything else defaults to NEVER, which is the safe direction: an action phrased as a
+     * toggle, or one with a side effect per call, undoes or duplicates itself on a second run.
+     * `ssh` is here because the command is chosen by the rule's author, who is asserting it is
+     * safe to repeat when they ask for a retry.
+     */
+    private val IDEMPOTENT_ACTIONS = setOf(
+        "cancel_notification", "dnd", "ringer_mode", "volume", "torch", "clipboard",
+        "clipboard_get", "secure_setting", "global_setting", "system_setting", "log",
+        "set_enabled", "var_set", "text_replace", "text_match", "datetime_format",
+        "file_read", "file_write", "file_list", "file_delete", "download", "wol", "ping", "ssh"
+    )
+
+    /** Variables each action publishes into the run scope, as name to description. */
+    private val ACTION_OUTPUTS = mapOf(
+        "http_request" to mapOf("status" to "HTTP status code", "body" to "Response body"),
+        "ssh" to mapOf("exit_status" to "Command exit status", "output" to "Combined stdout and stderr"),
+        "ping" to mapOf("ping_ms" to "Round trip in milliseconds"),
+        "file_read" to mapOf("content" to "File contents"),
+        "file_list" to mapOf("files" to "Newline separated listing"),
+        "download" to mapOf("path" to "Where the file landed", "bytes" to "Bytes written"),
+        "clipboard_get" to mapOf("clipboard" to "Clipboard text"),
+        "screenshot" to mapOf("path" to "Where the PNG landed"),
+        "tap_ui" to mapOf("tapped" to "Label of what was tapped")
+    )
+
+    val actions: List<TypeSpec> =
+        declaredActions.map { spec ->
+            spec.copy(
+                retrySafety = if (spec.id in IDEMPOTENT_ACTIONS) RetrySafety.IDEMPOTENT else RetrySafety.NEVER,
+                outputs = ACTION_OUTPUTS[spec.id].orEmpty()
+            )
+        }
 
     val all: List<TypeSpec> = triggers + conditions + actions
 

@@ -75,6 +75,12 @@ class Capabilities(private val context: Context) {
                     "front and tap on-screen controls; it can read screen content while on."
             )
 
+        Requirement.SEND_SMS ->
+            Status(
+                granted(Manifest.permission.SEND_SMS),
+                "adb shell pm grant $pkg android.permission.SEND_SMS, or allow SMS when kata asks"
+            )
+
         Requirement.EXACT_ALARM ->
             Status(
                 context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() == true,

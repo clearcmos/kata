@@ -84,7 +84,7 @@ generally assume the earlier ones landed.
 
 ## Vocabulary
 
-21 triggers, 11 conditions, 24 actions. `kata schema` prints all of them with their fields and
+21 triggers, 11 conditions, 40 actions. `kata schema` prints all of them with their fields and
 prerequisites. The short version:
 
 - **Triggers**: `manual`, `boot_completed`, `power_connected`, `power_disconnected`,
@@ -97,9 +97,65 @@ prerequisites. The short version:
 - **Actions**: `notify`, `cancel_notification`, `dnd`, `ringer_mode`, `volume`, `media`,
   `vibrate`, `torch`, `tts`, `http_request`, `launch_app`, `start_activity`, `broadcast`,
   `clipboard`, `secure_setting`, `global_setting`, `system_setting`, `wake_screen`, `wait`,
-  `log`, `set_enabled`, `global_action`, `tap_ui`, `ssh`
+  `log`, `set_enabled`, `global_action`, `tap_ui`, `ssh`, `var_set`, `text_replace`,
+  `text_match`, `datetime_format`, `file_read`, `file_write`, `file_append`, `file_list`,
+  `file_delete`, `download`, `wol`, `ping`, `screenshot`, `play_sound`, `clipboard_get`,
+  `sms_send`
 
 `secure_setting` and `global_setting` reach a lot with `WRITE_SECURE_SETTINGS` granted over adb.
+
+## Variables
+
+Actions publish variables, and later steps read them as `${vars.name}`. The trigger's own facts
+seed the scope, so a rule can use what fired it with no plumbing:
+
+```json
+{
+  "trigger": { "type": "app_foreground" },
+  "actions": [
+    { "type": "ping", "host": "10.0.0.2" },
+    { "type": "log", "message": "opened ${vars.package}, workstation at ${vars.ping_ms}ms" }
+  ]
+}
+```
+
+`kata schema` lists what each action publishes. `var_set` writes one explicitly, and with
+`"persist": true` it survives the run, which is how a rule remembers something between fires.
+
+An unknown variable is left in place rather than blanked, so an unresolved `${vars.x}` shows up
+in the run log instead of silently becoming an empty string. Validation defers on any field
+holding a variable reference, since its value is not knowable at install time.
+
+Two namespaces, deliberately separate: `${params.key}` is configuration a person edits from the
+phone, `${vars.name}` is state a rule produced. A sync must be able to update the first without
+clobbering the second.
+
+## Secrets
+
+Fields that carry credentials are declared sensitive and masked wherever arguments are printed,
+including the persisted run log and the API:
+
+```
+ok  http_request: would run: method=POST, url=https://example.test/hook,
+                             headers=<redacted>, body=<redacted>
+```
+
+Any undeclared field whose name looks like a secret is masked too, so an unrecognised key fails
+closed. Over-masking a structural field is an annoyance; printing a credential is not
+recoverable.
+
+## Retry
+
+Every action declares whether running it twice reaches the same end state. Only the idempotent
+ones accept a `retry` count, and asking for one elsewhere is a validation error:
+
+```
+actions[0].retry is not allowed on 'vibrate': running it twice does not repeat the
+first attempt. Only idempotent actions can be retried.
+```
+
+That distinction is not cosmetic. An action phrased as a toggle recomputes from the live value,
+so retrying it undoes the first attempt rather than repeating it.
 
 `setting_changed` watches a Settings key with a ContentObserver. Android has no broadcast for
 most settings, so this is how you react to a Quick Settings tile or any other toggle that writes
@@ -232,6 +288,27 @@ nix develop --command gradle ktlintFormat
 
 Lint runs with `warningsAsErrors = true`.
 
+## Prior art
+
+kata is not the most capable open-source automation app for Android and is not trying to be.
+
+[OpenTasker](https://github.com/SysAdminDoc/OpenTasker) (MIT) is a far more complete Tasker
+replacement: 77 actions, a Compose editor, Tasker and MacroDroid import, and Locale plugin
+support. [AutoJs6](https://github.com/SuperMonster003/AutoJs6) and
+[AutoX.js](https://github.com/automan-bot/AutoX) give you a full JavaScript runtime over
+accessibility, which is stronger than anything here for driving other apps' UI. If you want a
+GUI or a scripting language, use one of those.
+
+What kata does differently is put the API first rather than bolting it onto a GUI app: rules
+live in a repo, an agent authors them against a schema, and the device answers with validation
+errors, live capability, and per-step run records. That is a narrower tool, not a better one.
+
+Three ideas here are adapted from OpenTasker, which is MIT licensed: argument sensitivity, the
+retry-safety contract, and action outputs. The convergence is worth noting too, since it arrived
+independently: OpenTasker's action catalogue exists so "the runtime, editor, capability, and
+release count surfaces can no longer invent independent action lists", which is the same reason
+kata has a single `Vocabulary`.
+
 ## Limits
 
 - The target is a locked retail device. Root, custom ROMs, platform-key signing and Device Owner
@@ -241,8 +318,8 @@ Lint runs with `warningsAsErrors = true`.
   notably toggling Wi-Fi or mobile data through an API and force-stopping another app.
   `tap_ui` can often reach the same switch by tapping its Quick Settings tile instead.
 - No scripting. Rules are declarative, and gaps are closed by adding a typed action rather than
-  by an escape hatch. `http_request` covers most of what a script would have been used for by
-  moving the logic to a server.
+  by an escape hatch. Variables and `text_match` cover simple chaining; anything genuinely
+  algorithmic belongs behind `http_request` or `ssh`.
 - `interval` triggers can be deferred by Doze while the screen is off. `time_of_day` uses exact
   alarms and does not drift.
 - Reading the connected Wi-Fi SSID needs location permission and location switched on. Without

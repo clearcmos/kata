@@ -122,16 +122,31 @@ data class Automation(
 }
 
 object Params {
-    private val REFERENCE = Regex("""\$\{params\.([A-Za-z0-9_]+)\}""")
+    private val PARAM_REFERENCE = Regex("""\$\{params\.([A-Za-z0-9_]+)\}""")
+    private val VAR_REFERENCE = Regex("""\$\{vars\.([A-Za-z0-9_]+)\}""")
 
-    fun substitute(text: String, values: Map<String, String>): String = REFERENCE.replace(text) { match ->
-        values[match.groupValues[1]] ?: match.value
-    }
+    fun substitute(text: String, values: Map<String, String>): String =
+        PARAM_REFERENCE.replace(text) { match -> values[match.groupValues[1]] ?: match.value }
+
+    /**
+     * Replaces ${vars.name} from the live run scope.
+     *
+     * An unknown name is left in place rather than blanked. A rule that silently sent an empty
+     * string where a value was expected would be far harder to diagnose than one that visibly
+     * carries an unresolved placeholder into the run log.
+     */
+    fun substituteVars(text: String, values: Map<String, String>): String =
+        VAR_REFERENCE.replace(text) { match -> values[match.groupValues[1]] ?: match.value }
 
     /** Parameter names referenced by [text] that [values] does not define. */
-    fun unresolved(text: String, values: Set<String>): List<String> = REFERENCE
-        .findAll(text)
+    fun unresolved(text: String, values: Set<String>): List<String> = PARAM_REFERENCE.findAll(text)
         .map { it.groupValues[1] }
         .filter { it !in values }
         .toList()
+
+    /**
+     * Whether [text] carries a variable reference, which only resolves while a run is in
+     * progress. Validation has to defer on these: the value is not knowable at install time.
+     */
+    fun hasRuntimeReference(text: String): Boolean = VAR_REFERENCE.containsMatchIn(text)
 }

@@ -8,6 +8,9 @@ package com.clearcmos.kata.model
  * feedback loop; vagueness here costs a round trip.
  */
 object Validator {
+    const val RETRY_FIELD = "retry"
+    const val MAX_RETRIES = 5
+
     private val ID_PATTERN = Regex("^[a-z0-9][a-z0-9_-]*$")
     private val TIME_PATTERN = Regex("^([01]\\d|2[0-3]):([0-5]\\d)$")
     private val DAYS = setOf("mon", "tue", "wed", "thu", "fri", "sat", "sun")
@@ -84,6 +87,10 @@ object Validator {
         val known = spec.fields.associateBy { it.name }
         var wellTyped = true
         for (key in step.args.keys) {
+            if (key == RETRY_FIELD && kind == SpecKind.ACTION) {
+                checkRetry(step, spec, path, errors)
+                continue
+            }
             if (key !in known) {
                 val hint = suggest(key, spec.fields.map { it.name })
                 errors.add("$path.$key is not a field of '${step.type}'$hint")
@@ -99,15 +106,19 @@ object Validator {
             if (!checkField(step, field, path, errors)) wellTyped = false
         }
         // Cross-field rules read values as numbers and enums. Running them over a field that
-        // already failed its type check would either throw or pile a confusing second error on
-        // top of the real one, so they wait until the basics hold.
-        if (wellTyped) checkStepInvariants(step, path, errors)
+        // already failed its type check, or one that is still a runtime placeholder, would
+        // either throw or pile a confusing second error on top of the real one.
+        val deferred = step.args.raw().values.any { it is String && Params.hasRuntimeReference(it) }
+        if (wellTyped && !deferred) checkStepInvariants(step, path, errors)
     }
 
     /** Returns false when the value is unusable, so cross-field checks know to stand down. */
     private fun checkField(step: Step, field: FieldSpec, path: String, errors: MutableList<String>): Boolean {
         val where = "$path.${field.name}"
         val raw = step.args.raw()[field.name]
+        // A ${vars.x} reference is filled in mid-run, so its type cannot be judged here. Checking
+        // it would reject every rule that chains one action's output into the next.
+        if (raw is String && Params.hasRuntimeReference(raw)) return true
         val problem: String? = when (field.type) {
             FieldType.INT ->
                 if (runCatching { step.args.int(field.name) }.isFailure) {
@@ -144,6 +155,28 @@ object Validator {
         }
         problem?.let { errors.add(it) }
         return problem == null
+    }
+
+    /**
+     * `retry` is accepted on any action but refused on one that is not idempotent, because
+     * retrying a toggle undoes the first attempt instead of repeating it.
+     */
+    private fun checkRetry(step: Step, spec: TypeSpec, path: String, errors: MutableList<String>) {
+        val count = runCatching { step.args.optInt(RETRY_FIELD) }.getOrNull()
+        if (count == null) {
+            errors.add("$path.$RETRY_FIELD must be a whole number")
+            return
+        }
+        if (count !in 0..MAX_RETRIES) {
+            errors.add("$path.$RETRY_FIELD must be between 0 and $MAX_RETRIES")
+            return
+        }
+        if (count > 0 && spec.retrySafety != RetrySafety.IDEMPOTENT) {
+            errors.add(
+                "$path.$RETRY_FIELD is not allowed on '${step.type}': running it twice does not " +
+                    "repeat the first attempt. Only idempotent actions can be retried."
+            )
+        }
     }
 
     /** Cross-field rules that a per-field spec cannot express. */

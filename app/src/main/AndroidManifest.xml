@@ -29,6 +29,15 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
+    <!-- Only the sms_send action. Dangerous and never requested at startup; /capabilities
+         reports it as unmet until an armed rule needs it. -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- Declared not-required so the SMS permission does not make kata look like it needs
+         telephony hardware. Everything else works on a device without a radio. -->
+    <uses-feature
+        android:name="android.hardware.telephony"
+        android:required="false" />
+
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />

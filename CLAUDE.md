@@ -142,6 +142,32 @@ of the two it would take.
   about. `http_request` covers most of what a script would have done by moving logic to a
   server.
 
+## What was taken from OpenTasker
+
+[OpenTasker](https://github.com/SysAdminDoc/OpenTasker) is MIT, so reuse is clean with
+attribution. Three of its ideas are adapted here, each because kata had a real gap:
+
+- **Argument sensitivity** (`model/Sensitivity.kt`). kata was writing every argument verbatim
+  into the run record on a dry run, and that record is persisted to `runs.json` and served over
+  the API. An `Authorization` header sat in cleartext in both. Resolution is declared flag
+  first, then a name heuristic, and an unknown key falls through to the heuristic and is masked.
+  Fail closed: over-masking is an annoyance, printing a credential is not recoverable.
+- **Retry safety** (`RetrySafety`, `IDEMPOTENT_ACTIONS`). Only idempotent actions accept a
+  `retry`. Their comment makes the point better than a doc can: an action phrased as a toggle
+  recomputes from the live value, so a retry flips it back rather than repeating it.
+- **Action outputs**. Actions publish variables into the run scope, which is what makes a rule a
+  sequence rather than a list of independent effects.
+
+Worth recording that OpenTasker arrived independently at kata's central idea. Their action
+catalogue exists so "the runtime, editor, capability, and release count surfaces can no longer
+invent independent action lists", which is exactly why `Vocabulary` is a single registry.
+
+Deliberately not taken: the Compose GUI, Room and SQLCipher, Locale plugin support, and Tasker
+or MacroDroid import. All the wrong shape for a tool with no authoring UI.
+
+Deliberately skipped from the port: `mqtt.publish`, which would add a broker client dependency
+for a broker this user does not run.
+
 ## Findings
 
 ### Android 15+ edge-to-edge breaks the framework action bar
@@ -162,6 +188,17 @@ screenshot:
 ```
 adb shell uiautomator dump /sdcard/win.xml && adb shell cat /sdcard/win.xml
 ```
+
+### Simulation must be given the trigger's facts
+
+`/simulate` exists so a rule can be exercised without waiting for the real condition, and its
+value depends entirely on running the same path production does. When trigger facts became
+variables, `onEvent` seeded them but `fireNow` did not take a seed at all, so a simulated
+`app_foreground` logged a bare `${vars.package}` while the real one resolved it.
+
+That is the exact failure the design is meant to prevent, and it is invisible unless a test
+compares the two paths. `fireNow` now takes the seed and `/simulate` passes `event.facts`. Any
+future run entry point has to do the same.
 
 ### Testing a setting_changed rule that watches adb_wifi_enabled
 

@@ -2,13 +2,18 @@ package com.clearcmos.kata.triggers
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.graphics.Bitmap
 import android.provider.Settings
 import android.util.Log
+import android.view.Display
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import com.clearcmos.kata.engine.Kata
 import com.clearcmos.kata.engine.TriggerEvent
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Foreground-app detection and on-screen interaction.
@@ -76,6 +81,38 @@ class KataAccessibilityService : AccessibilityService() {
     // -- interaction, called from the engine thread -------------------------------------
 
     fun runGlobalAction(action: Int): Boolean = performGlobalAction(action)
+
+    /**
+     * Captures the screen, blocking the caller until the system answers.
+     *
+     * takeScreenshot is asynchronous and hands back a hardware buffer, which is copied into a
+     * software bitmap before returning: a hardware bitmap cannot be compressed reliably, and the
+     * buffer has to be closed before this method returns or it leaks.
+     */
+    fun captureScreen(timeoutMs: Long = SCREENSHOT_TIMEOUT_MS): Bitmap? {
+        val latch = CountDownLatch(1)
+        val captured = AtomicReference<Bitmap?>(null)
+        takeScreenshot(
+            Display.DEFAULT_DISPLAY,
+            mainExecutor,
+            object : TakeScreenshotCallback {
+                override fun onSuccess(screenshot: ScreenshotResult) {
+                    screenshot.hardwareBuffer.use { buffer ->
+                        val wrapped = Bitmap.wrapHardwareBuffer(buffer, screenshot.colorSpace)
+                        captured.set(wrapped?.copy(Bitmap.Config.ARGB_8888, false))
+                    }
+                    latch.countDown()
+                }
+
+                override fun onFailure(errorCode: Int) {
+                    Log.w(TAG, "screenshot refused, error $errorCode")
+                    latch.countDown()
+                }
+            }
+        )
+        latch.await(timeoutMs, TimeUnit.MILLISECONDS)
+        return captured.get()
+    }
 
     /**
      * Finds a node matching [matcher] and clicks it, polling until [timeoutMs].
@@ -180,6 +217,7 @@ class KataAccessibilityService : AccessibilityService() {
         private const val TAG = "KataA11y"
         private const val POLL_MS = 150L
         private const val MAX_ANCESTOR_HOPS = 12
+        private const val SCREENSHOT_TIMEOUT_MS = 5000L
 
         @Volatile
         var instance: KataAccessibilityService? = null
