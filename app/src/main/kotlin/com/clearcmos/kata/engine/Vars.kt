@@ -13,8 +13,10 @@ import org.json.JSONObject
  * these are values a rule wrote for itself. Mixing them would mean a sync either clobbered
  * state or refused to update configuration.
  */
-class VarStore(context: Context) {
-    private val file = File(context.filesDir, "vars.json")
+class VarStore(directory: File) {
+    constructor(context: Context) : this(context.filesDir)
+
+    private val file = File(directory, "vars.json")
     private val lock = Any()
     private var cache: MutableMap<String, String>? = null
 

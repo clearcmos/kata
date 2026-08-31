@@ -280,13 +280,24 @@ opened, and rules will quietly stop firing.
 ## Build
 
 ```
-nix develop --command gradle assembleDebug
-nix develop --command gradle testDebugUnitTest
-nix develop --command gradle ktlintCheck lintDebug
+nix develop --command gradle ktlintCheck :app:lintDebug
+nix develop --command gradle :app:testDebugUnitTest
+nix develop --command gradle :app:koverVerifyDebug
+nix develop --command gradle :app:assembleDebug
 nix develop --command gradle ktlintFormat
 ```
 
-Lint runs with `warningsAsErrors = true`.
+The workstation CLI is checked separately:
+
+```
+python3 -m unittest discover -s tests
+ruff check cli tests && ruff format --check cli tests
+```
+
+Android lint runs with `warningsAsErrors = true`, and unit tests are gated on line coverage of
+the JVM-testable modules. CI runs all of it on push and pull request. Dependency versions live
+only in `gradle/libs.versions.toml` and the committed `*.lockfile` set; CI fails if a lockfile
+is stale.
 
 ## Prior art
 

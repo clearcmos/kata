@@ -53,6 +53,14 @@ class ActionError(message: String) : RuntimeException(message)
 data class ActionOutcome(val detail: String, val outputs: Map<String, String> = emptyMap())
 
 /**
+ * Executes one action. An interface so [com.clearcmos.kata.engine.Engine]'s sequencing, retry
+ * and variable handling can be tested without a device attached.
+ */
+interface ActionExecutor {
+    fun execute(step: Step): ActionOutcome
+}
+
+/**
  * Executes one action and returns a one-line description of what it did.
  *
  * Every method runs on the engine's background thread, never the main thread, so the blocking
@@ -65,11 +73,11 @@ class ActionRunner(
     private val store: Store,
     private val persistentVars: VarStore,
     private val device: DeviceState = DeviceState(context)
-) {
+) : ActionExecutor {
     private var tts: TextToSpeech? = null
     private val ttsReady = CountDownLatch(1)
 
-    fun execute(step: Step): ActionOutcome = when (val result = dispatch(step)) {
+    override fun execute(step: Step): ActionOutcome = when (val result = dispatch(step)) {
         is ActionOutcome -> result
         else -> ActionOutcome(result.toString())
     }

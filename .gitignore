@@ -27,3 +27,6 @@ keystore.properties
 # Python bytecode from the cli
 __pycache__/
 *.pyc
+
+# ruff cache from linting the workstation CLI
+.ruff_cache/

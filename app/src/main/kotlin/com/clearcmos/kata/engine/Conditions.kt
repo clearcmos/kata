@@ -6,7 +6,7 @@ import com.clearcmos.kata.triggers.KataAccessibilityService
 /** The outcome of one condition, carrying why it decided that so the run log can show it. */
 data class ConditionResult(val matched: Boolean, val detail: String)
 
-class ConditionEvaluator(private val device: DeviceState) {
+class ConditionEvaluator(private val device: DeviceReadings) {
     fun evaluate(step: Step): ConditionResult {
         val args = step.args
         return when (step.type) {

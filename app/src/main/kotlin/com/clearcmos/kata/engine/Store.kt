@@ -14,8 +14,10 @@ import org.json.JSONArray
  * engine runs. Writes are atomic (temp file plus rename) because a half-written rule set that
  * survives a reboot would silently disable automations with no obvious cause.
  */
-class Store(context: Context) {
-    private val file = File(context.filesDir, "automations.json")
+class Store(directory: File) {
+    constructor(context: Context) : this(context.filesDir)
+
+    private val file = File(directory, "automations.json")
     private val lock = Any()
     private var cache: List<Automation>? = null
     private val listeners = mutableListOf<() -> Unit>()

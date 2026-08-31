@@ -2,12 +2,16 @@
 agp = "8.13.2"
 kotlin = "2.3.21"
 ktlint-plugin = "14.2.0"
+kover = "0.9.9"
 appcompat = "1.8.0"
 recyclerview = "1.4.0"
 material = "1.13.0"
 junit = "4.13.2"
 # Maintained fork of the abandoned com.jcraft:jsch. Verified latest on 2026-08-30.
 jsch = "2.28.7"
+# Real org.json for JVM tests only. android.jar ships stubs that return null under
+# isReturnDefaultValues, so without this every serialization test silently persists nothing.
+json = "20260814"
 
 [libraries]
 androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
@@ -15,8 +19,10 @@ androidx-recyclerview = { module = "androidx.recyclerview:recyclerview", version
 material = { module = "com.google.android.material:material", version.ref = "material" }
 junit = { module = "junit:junit", version.ref = "junit" }
 jsch = { module = "com.github.mwiede:jsch", version.ref = "jsch" }
+json = { module = "org.json:json", version.ref = "json" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint-plugin" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }

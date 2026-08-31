@@ -214,13 +214,19 @@ def cmd_fire(args):
     print_run(body["run"])
 
 
-def cmd_simulate(args):
+def parse_facts(pairs) -> dict:
+    """Turns key=value arguments into an event's facts. Values may contain further = signs."""
     facts = {}
-    for pair in args.facts:
+    for pair in pairs:
         if "=" not in pair:
             die(f"facts must be key=value, got '{pair}'")
         key, value = pair.split("=", 1)
         facts[key] = value
+    return facts
+
+
+def cmd_simulate(args):
+    facts = parse_facts(args.facts)
     status, body = Api().request(
         "POST", "/simulate", {"type": args.type, "facts": facts, "dry_run": args.dry}
     )
@@ -335,7 +341,7 @@ def cmd_doctor(args):
 # -- entry point -----------------------------------------------------------------------
 
 
-def main():
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="kata", description=__doc__.strip().splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -404,7 +410,11 @@ def main():
     p = sub.add_parser("doctor", help="check the whole path from here to the engine")
     p.set_defaults(func=cmd_doctor)
 
-    args = parser.parse_args()
+    return parser
+
+
+def main():
+    args = build_parser().parse_args()
     args.func(args)
 
 

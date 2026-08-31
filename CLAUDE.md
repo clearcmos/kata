@@ -189,6 +189,24 @@ screenshot:
 adb shell uiautomator dump /sdcard/win.xml && adb shell cat /sdcard/win.xml
 ```
 
+### buildMap shadows a property named like a Map member
+
+`FieldSpec.toMap()` used `buildMap { ... if (values.isNotEmpty()) put("values", values) }`. Inside
+that lambda `values` binds to the **map's own** `values` collection, not the field's, so every
+enum published a self-referential list:
+
+```
+values=[below, int, false, Fire when the level drops..., (this Collection)]
+```
+
+Android's `org.json` tolerated it, so `/schema` returned 200 on the device and the bug was
+invisible; the reference implementation used in JVM tests throws, which is how it surfaced.
+Every enum's allowed-value list was wrong in the machine-readable contract an authoring agent
+reads, while the Kotlin-side validator kept reporting the right values.
+
+Qualify the receiver (`this@FieldSpec.values`) whenever a `buildMap` body names a property that
+`Map` also defines: `values`, `keys`, `entries`, `size`.
+
 ### Simulation must be given the trigger's facts
 
 `/simulate` exists so a rule can be exercised without waiting for the real condition, and its
@@ -333,6 +351,51 @@ than a suppression:
   without ever checking. `KataService.isRunning` now backs it.
 - `CoarseFineLocation`: `ACCESS_FINE_LOCATION` requires `ACCESS_COARSE_LOCATION` declared
   alongside it.
+
+## Verification
+
+```
+nix develop --command gradle ktlintCheck :app:lintDebug        # format and lint
+nix develop --command gradle :app:testDebugUnitTest            # unit tests
+nix develop --command gradle :app:koverVerifyDebug             # coverage gate
+nix develop --command gradle :app:assembleDebug                # build
+nix develop --command gradle ktlintFormat                      # fix formatting
+python3 -m unittest discover -s tests                          # CLI tests
+ruff check cli tests && ruff format --check cli tests          # CLI lint and format
+```
+
+CI runs all of it on push and PR, plus `git diff --exit-code -- '*.lockfile'` so a dependency
+cannot move without a reviewed lockfile diff.
+
+### Test exemptions
+
+Kover excludes these from the coverage gate because they are verified on the device rather than
+on the JVM. Anything not listed here is expected to carry tests:
+
+| Excluded | Why |
+| --- | --- |
+| `ui.*`, `databinding.*` | Activities and generated binding classes; checked by running the app |
+| `KataService`, `Kata`, `Notifications` | Service lifecycle and notification channels; only meaningful on a device |
+| `DeviceState` | The one real implementation of `DeviceReadings`; the interface is what conditions are tested against |
+| `ActionRunner`, `SshClient` | Every branch performs a real device or network effect |
+| `ApiToken` | Generates and mirrors a key to app storage |
+| `triggers.*` | Broadcast receivers, the accessibility service, and alarm scheduling |
+
+The line to hold: logic that can run on the JVM lives in a class that does. `Engine` and
+`ControlApi` both take their collaborators through the primary constructor for exactly this
+reason, with a `Context` convenience constructor that assembles the real ones.
+
+### Decisions
+
+- **2026-08-31, changelog**: no `CHANGELOG.md`. Commit messages carry the reasoning and git
+  history is the record; a hand-maintained changelog for a single-consumer app would drift.
+- **2026-08-31, dependency updates**: dependabot opens monthly PRs for github-actions and
+  gradle. Versions live only in `gradle/libs.versions.toml` and the `*.lockfile` set; the flake
+  pins the JDK, Gradle, and SDK separately and is bumped by hand.
+- **2026-08-31, coverage floor 87**: measured 89% at the time. Ratchet upward only.
+- **2026-08-31, real org.json in tests**: `android.jar` ships stubs that return null under
+  `isReturnDefaultValues`, so every persistence test silently passed while writing nothing.
+  `testImplementation(libs.json)` shadows the stub.
 
 ## Build and deploy
 

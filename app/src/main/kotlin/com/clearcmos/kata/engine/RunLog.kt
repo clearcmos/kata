@@ -45,8 +45,10 @@ data class RunRecord(
 }
 
 /** A capped, persisted ring of recent runs. This is the only way to debug a rule after the fact. */
-class RunLog(context: Context) {
-    private val file = File(context.filesDir, "runs.json")
+class RunLog(directory: File) {
+    constructor(context: Context) : this(context.filesDir)
+
+    private val file = File(directory, "runs.json")
     private val lock = Any()
     private val records = ArrayDeque<RunRecord>()
     private var loaded = false

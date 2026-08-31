@@ -6,6 +6,7 @@ import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.SocketTimeoutException
 import java.net.URLDecoder
 import java.util.concurrent.Executors
 
@@ -82,6 +83,12 @@ class TinyHttpServer(private val port: Int, private val handler: (HttpRequest) -
                     } else {
                         handler(request)
                     }
+                } catch (e: SocketTimeoutException) {
+                    // A client that announces a body and then stops sending would otherwise hold
+                    // a worker for the whole socket timeout. There are only two workers, so a
+                    // couple of truncated requests would stall every other call to the API.
+                    Log.w(TAG, "client stopped mid-request", e)
+                    HttpResponse(408, """{"error":"request timed out"}""")
                 } catch (e: Exception) {
                     Log.e(TAG, "handler threw", e)
                     HttpResponse(500, """{"error":${quote(e.message ?: e.javaClass.simpleName)}}""")
@@ -188,7 +195,7 @@ class TinyHttpServer(private val port: Int, private val handler: (HttpRequest) -
         const val TAG = "KataApi"
         const val BACKLOG = 8
         const val WORKER_THREADS = 2
-        const val SOCKET_TIMEOUT_MS = 15_000
+        const val SOCKET_TIMEOUT_MS = 3_000
         const val MAX_BODY_BYTES = 4 * 1024 * 1024
         const val MAX_LINE_CHARS = 8192
     }

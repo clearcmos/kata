@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Actions are SHA-pinned, so without this they silently rot at whatever commit was current
+  # the day they were written.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 5

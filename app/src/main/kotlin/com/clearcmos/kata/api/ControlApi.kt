@@ -20,15 +20,25 @@ import org.json.JSONObject
  * point of the design: an agent can install, dry-run, simulate a trigger, and read the outcome
  * without a human watching the phone.
  */
-class ControlApi(private val context: Context, private val engine: Engine) {
-    private val capabilities = Capabilities(context)
+class ControlApi(
+    private val engine: Engine,
+    private val expectedToken: () -> String,
+    private val capabilities: CapabilityReporter
+) {
+    /** Assembles the real collaborators; the primary constructor is what tests use. */
+    constructor(context: Context, engine: Engine) : this(
+        engine = engine,
+        expectedToken = { ApiToken.get(context) },
+        capabilities = Capabilities(context)
+    )
+
     private val store get() = engine.store
     private val runLog get() = engine.runLog
 
     fun handle(request: HttpRequest): HttpResponse {
         if (request.path == "/health") return ok(mapOf("ok" to true, "service" to "kata"))
 
-        val expected = ApiToken.get(context)
+        val expected = expectedToken()
         val presented =
             request.headers["x-kata-token"]
                 ?: request.headers["authorization"]?.removePrefix("Bearer ")?.trim()
@@ -267,7 +277,7 @@ class ControlApi(private val context: Context, private val engine: Engine) {
     // -- helpers ------------------------------------------------------------------------
 
     private fun unmetFor(automation: Automation): List<String> = capabilities.unmetFor(automation).map { requirement ->
-        "${requirement.name.lowercase()}: ${capabilities.status(requirement).remedy}"
+        "${requirement.name.lowercase()}: ${capabilities.statusRemedy(requirement)}"
     }
 
     private fun ok(payload: Map<String, Any?>) = HttpResponse(200, Json.toJson(payload).toString())

@@ -3,6 +3,7 @@ package com.clearcmos.kata.engine
 import android.content.Context
 import android.util.Log
 import com.clearcmos.kata.actions.ActionError
+import com.clearcmos.kata.actions.ActionExecutor
 import com.clearcmos.kata.actions.ActionRunner
 import com.clearcmos.kata.model.ArgError
 import com.clearcmos.kata.model.Automation
@@ -18,15 +19,26 @@ import java.util.concurrent.TimeUnit
  * the same instant queue instead of interleaving. That makes `wait` safe, makes the run log
  * ordered, and removes a whole class of "it worked when I tested it alone" bugs.
  */
-class Engine(context: Context, val store: Store, val runLog: RunLog) {
+class Engine(
+    val store: Store,
+    val runLog: RunLog,
+    private val varStore: VarStore,
+    private val conditions: ConditionEvaluator,
+    private val actions: ActionExecutor
+) {
+    /** Assembles the real collaborators. The primary constructor is what tests use. */
+    constructor(context: Context, store: Store, runLog: RunLog) : this(
+        store = store,
+        runLog = runLog,
+        varStore = VarStore(context),
+        conditions = ConditionEvaluator(DeviceState(context)),
+        actions = ActionRunner(context, store, VarStore(context), DeviceState(context))
+    )
+
     private val executor =
         Executors.newSingleThreadExecutor { runnable ->
             Thread(runnable, "kata-engine").apply { isDaemon = true }
         }
-    private val device = DeviceState(context)
-    private val conditions = ConditionEvaluator(device)
-    private val varStore = VarStore(context)
-    private val actions = ActionRunner(context, store, varStore, device)
 
     /** Dispatches an event to every enabled automation whose trigger accepts it. */
     fun onEvent(event: TriggerEvent) {
@@ -61,7 +73,7 @@ class Engine(context: Context, val store: Store, val runLog: RunLog) {
 
     fun shutdown() {
         executor.shutdownNow()
-        actions.shutdown()
+        (actions as? ActionRunner)?.shutdown()
     }
 
     private fun run(

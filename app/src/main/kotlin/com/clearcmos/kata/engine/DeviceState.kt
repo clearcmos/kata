@@ -18,14 +18,37 @@ import android.os.PowerManager
  * Everything here is best-effort: a missing permission yields null rather than throwing, and
  * conditions treat null as "cannot satisfy" so a rule fails visibly instead of firing wrongly.
  */
-class DeviceState(private val context: Context) {
-    fun batteryLevel(): Int? {
+/**
+ * The device facts conditions are evaluated against.
+ *
+ * An interface so condition logic can be exercised on the JVM against a fake. Every reader
+ * returns null rather than throwing when a permission is missing, and conditions treat null as
+ * "cannot satisfy" so a rule fails visibly instead of firing on a guess.
+ */
+interface DeviceReadings {
+    fun batteryLevel(): Int?
+
+    fun isCharging(): Boolean
+
+    fun isScreenOn(): Boolean
+
+    fun isWifiConnected(): Boolean
+
+    fun wifiSsid(): String?
+
+    fun isDndActive(): Boolean
+
+    fun isAppInstalled(packageName: String): Boolean
+}
+
+class DeviceState(private val context: Context) : DeviceReadings {
+    override fun batteryLevel(): Int? {
         val manager = context.getSystemService(BatteryManager::class.java) ?: return null
         val level = manager.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)
         return if (level in 0..100) level else null
     }
 
-    fun isCharging(): Boolean {
+    override fun isCharging(): Boolean {
         val manager = context.getSystemService(BatteryManager::class.java)
         if (manager != null) return manager.isCharging
         val status =
@@ -36,9 +59,9 @@ class DeviceState(private val context: Context) {
             status == BatteryManager.BATTERY_STATUS_FULL
     }
 
-    fun isScreenOn(): Boolean = context.getSystemService(PowerManager::class.java)?.isInteractive ?: false
+    override fun isScreenOn(): Boolean = context.getSystemService(PowerManager::class.java)?.isInteractive ?: false
 
-    fun isWifiConnected(): Boolean {
+    override fun isWifiConnected(): Boolean {
         val manager = context.getSystemService(ConnectivityManager::class.java) ?: return false
         val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return false
         return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
@@ -49,7 +72,7 @@ class DeviceState(private val context: Context) {
      * returns the literal "<unknown ssid>" instead of failing when the caller lacks location
      * permission, which would otherwise be indistinguishable from a network actually named that.
      */
-    fun wifiSsid(): String? {
+    override fun wifiSsid(): String? {
         if (!hasPermission(Manifest.permission.ACCESS_FINE_LOCATION)) return null
         val manager = context.getSystemService(ConnectivityManager::class.java) ?: return null
         val capabilities = manager.getNetworkCapabilities(manager.activeNetwork) ?: return null
@@ -59,12 +82,12 @@ class DeviceState(private val context: Context) {
         return ssid.takeIf { it.isNotEmpty() && it != UNKNOWN_SSID }
     }
 
-    fun isDndActive(): Boolean {
+    override fun isDndActive(): Boolean {
         val manager = context.getSystemService(NotificationManager::class.java) ?: return false
         return manager.currentInterruptionFilter != NotificationManager.INTERRUPTION_FILTER_ALL
     }
 
-    fun isAppInstalled(packageName: String): Boolean = runCatching {
+    override fun isAppInstalled(packageName: String): Boolean = runCatching {
         context.packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
     }.isSuccess
 

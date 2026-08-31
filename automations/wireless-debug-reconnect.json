@@ -1,21 +1,45 @@
 {
   "id": "wireless-debug-reconnect",
   "name": "Reconnect adb when wireless debugging comes on",
-  "description": "When the Wireless Debug Tile turns wireless debugging on, ask the workstation to run adb-reconnect so it reconnects to this phone. Fails quietly if the machine is off.",
+  "description": "When a Quick Settings tile turns wireless debugging on, ask the workstation to run its adb reconnect script. Set the host, user, and command parameters on the phone, or with kata param, so this file carries no machine-specific values. Fails quietly if the workstation is off.",
   "enabled": true,
-  "trigger": { "type": "setting_changed", "scope": "global", "key": "adb_wifi_enabled", "equals": "1" },
+  "trigger": {
+    "type": "setting_changed",
+    "scope": "global",
+    "key": "adb_wifi_enabled",
+    "equals": "1"
+  },
   "actions": [
-    { "type": "wait", "ms": 2000 },
+    {
+      "type": "wait",
+      "ms": 2000
+    },
     {
       "type": "ssh",
       "host": "${params.host}",
       "user": "${params.user}",
-      "command": "/usr/local/bin/adb-reconnect",
+      "command": "${params.command}",
       "timeout_ms": 20000
     }
   ],
   "params": [
-    { "key": "host", "label": "Workstation address", "type": "string", "value": "10.0.0.2" },
-    { "key": "user", "label": "Login name", "type": "string", "value": "user" }
+    {
+      "key": "host",
+      "label": "Workstation address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "user",
+      "label": "Login name",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "command",
+      "label": "Command to run",
+      "type": "string",
+      "value": "/usr/local/bin/adb-reconnect"
+    }
   ]
 }

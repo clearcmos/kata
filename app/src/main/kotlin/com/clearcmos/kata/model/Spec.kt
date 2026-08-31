@@ -41,7 +41,9 @@ data class FieldSpec(
         put("type", type.name.lowercase())
         put("required", required)
         put("doc", doc)
-        if (values.isNotEmpty()) put("values", values)
+        // Qualified: inside buildMap, a bare `values` resolves to the map's own values
+        // collection, not this field's, which serialised a self-referential list.
+        if (this@FieldSpec.values.isNotEmpty()) put("values", this@FieldSpec.values)
         if (default != null) put("default", default)
         if (sensitive) put("sensitive", true)
     }
@@ -705,6 +707,19 @@ object Vocabulary {
         all.groupBy { it.kind }.mapValues { (_, specs) -> specs.associateBy { it.id } }
 
     fun find(kind: SpecKind, id: String): TypeSpec? = byKind[kind]?.get(id)
+
+    /**
+     * Every requirement an automation's trigger, conditions, and actions declare.
+     *
+     * Pure, so it can be tested without a device; [com.clearcmos.kata.api.Capabilities] is what
+     * resolves the result against live grant state.
+     */
+    fun requirementsOf(automation: Automation): List<Requirement> {
+        val specs = listOfNotNull(find(SpecKind.TRIGGER, automation.trigger.type)) +
+            automation.conditions.mapNotNull { find(SpecKind.CONDITION, it.type) } +
+            automation.actions.mapNotNull { find(SpecKind.ACTION, it.type) }
+        return specs.flatMap { it.requires }.distinct()
+    }
 
     fun ids(kind: SpecKind): List<String> = byKind[kind]?.keys?.sorted().orEmpty()
 }
