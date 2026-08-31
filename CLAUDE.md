@@ -163,6 +163,41 @@ screenshot:
 adb shell uiautomator dump /sdcard/win.xml && adb shell cat /sdcard/win.xml
 ```
 
+### Reboot survival, verified
+
+Tested on the S25 by rebooting and checking everything **before** opening the app, since
+launching it would have started the service by hand and proved nothing. All of it held:
+
+```
+23:12:36 KataA11y: accessibility service connected, foreground=com.sec.android.app.launcher
+23:12:40 KataTriggers: refreshing registrations for [battery_level, boot_completed, ...]
+23:12:40 KataTriggers: scheduled 1 alarm(s)
+23:12:40 KataService: engine up: 5 enabled
+23:12:40 KataEngine: boot_completed matched 1 automation(s)
+```
+
+The rescheduled alarm was confirmed in `dumpsys alarm` rather than inferred from the log line:
+
+```
+RTC_WAKEUP #87: Alarm{... type 0 ... com.clearcmos.kata}
+tag=*walarm*:com.clearcmos.kata/.triggers.AlarmReceiver
+OW=2026-08-31 22:30:00.000
+```
+
+Two things worth knowing:
+
+- **`pm grant` permissions survive a reboot.** Only a reinstall clears them, so the grant block
+  belongs in the install cycle, not in a boot checklist. Special access granted through Settings
+  (accessibility, DND, notification listener) survives too.
+- **A reboot clears wireless debugging** and needs a tap on the phone to restore, matching the
+  note in the user's global CLAUDE.md. `adb-reconnect` then reconnects by scanning for the new random
+  port and re-arming 5555. Budget for that before rebooting a device you are driving remotely.
+
+The `engine-heartbeat` automation exists to leave a dated record of this in the run log. The
+main failure mode of a background automation engine is dying quietly, and a `boot_completed`
+rule is the cheapest way to tell "the engine restarted" from "the engine has been dead for two
+days".
+
 ### The accessibility service is unbound and rebound at will
 
 The platform recycles an AccessibilityService on its own schedule. Observed in a normal session,

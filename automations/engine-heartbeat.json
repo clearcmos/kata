@@ -1,0 +1,10 @@
+{
+  "id": "engine-heartbeat",
+  "name": "Engine restarted",
+  "description": "Records a run every time the engine comes back after a reboot or an app update. The main failure mode of a background automation engine is dying silently, so this leaves a dated trace in the run log either way.",
+  "enabled": true,
+  "trigger": { "type": "boot_completed" },
+  "actions": [
+    { "type": "log", "message": "engine started after boot" }
+  ]
+}
