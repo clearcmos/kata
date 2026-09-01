@@ -54,7 +54,10 @@ def adb(*args: str, check: bool = True) -> str:
 def ensure_device():
     lines = [line for line in adb("devices").splitlines()[1:] if line.strip() and "device" in line.split()]
     if not lines:
-        die("no adb device. Run adb-reconnect to connect, or check wireless debugging on the phone.")
+        die(
+            "no adb device. Connect one with `adb connect <host>:<port>`, and check that "
+            "wireless debugging is on in the phone's developer options."
+        )
 
 
 def ensure_forward():

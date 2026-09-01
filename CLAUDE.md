@@ -69,8 +69,8 @@ What is reachable, in rough order of what it costs the user:
 | Shizuku | user starts it; re-armed over adb after a reboot | ADB shell privilege: `svc`, `pm`, `am force-stop`, `cmd` |
 
 Shizuku is not root. It runs at ADB shell privilege and is available on this device; the user
-already has `adb-reconnect` and a wireless-debugging Quick Settings tile, so re-arming it is one
-command. It stays a live option unless the user says otherwise.
+already has a reconnect script and a wireless-debugging Quick Settings tile, so re-arming it
+is one command. It stays a live option unless the user says otherwise.
 
 Genuinely out of reach under this ceiling: toggling Wi-Fi or mobile data through an API
 (removed for third-party callers in Android 10) and force-stopping another app. Say so in one
@@ -263,7 +263,7 @@ Two things worth knowing:
   belongs in the install cycle, not in a boot checklist. Special access granted through Settings
   (accessibility, DND, notification listener) survives too.
 - **A reboot clears wireless debugging** and needs a tap on the phone to restore, matching the
-  note in the user's global CLAUDE.md. `adb-reconnect` then reconnects by scanning for the new random
+  note in the user's global CLAUDE.md. A reconnect script then finds the new random
   port and re-arming 5555. Budget for that before rebooting a device you are driving remotely.
 
 The `engine-heartbeat` automation exists to leave a dated record of this in the run log. The
