@@ -16,6 +16,8 @@ jobs:
   android:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: write # only used to push refreshed lockfiles onto a dependabot branch
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -27,6 +29,27 @@ jobs:
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
           gradle-version: "8.14.4"
+      # Dependabot bumps gradle/libs.versions.toml but cannot regenerate the lockfiles, so the
+      # lock still pins the old version and resolution fails before any check runs. Refreshing
+      # here rather than in a follow-up workflow is deliberate: a push made with GITHUB_TOKEN
+      # does not retrigger CI, so a separate job would leave a correct branch wearing a stale
+      # red check.
+      - name: Refresh dependency locks on a dependabot branch
+        if: github.actor == 'dependabot[bot]' && github.event_name == 'pull_request'
+        run: |
+          gradle dependencies :app:dependencies --write-locks
+          if git diff --quiet -- '*.lockfile'; then
+            echo "locks already current"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Refresh Gradle dependency locks" -- '*.lockfile'
+            git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
+              "HEAD:${GITHUB_HEAD_REF}"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Format and lint
         run: gradle ktlintCheck :app:lintDebug
       - name: Unit tests with coverage gate

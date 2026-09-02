@@ -1,13 +1,37 @@
 version: 2
 updates:
-  # Actions are SHA-pinned, so without this they silently rot at whatever commit was current
-  # the day they were written.
+  # Actions are SHA-pinned, so dependabot is the only thing that will move them.
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # Versions live in gradle/libs.versions.toml, and dependabot cannot refresh the Gradle
+  # lockfiles, so a bump alone leaves the lock pinning the old version and resolution fails.
+  # The ci workflow regenerates and commits the locks on dependabot branches; see CLAUDE.md,
+  # "Dependency updates", for the manual procedure when that is unavailable.
+  #
+  # Grouped so one PR carries a coherent set: the Kotlin plugins have to move together, and an
+  # androidx bump can raise the compileSdk floor, which is a deliberate change rather than a
+  # monthly one.
   - package-ecosystem: gradle
     directory: /
     schedule:
       interval: monthly
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 3
+    ignore:
+      # AGP 9 changes the Kotlin plugin wiring and requires Gradle 9. That migration is a
+      # deliberate piece of work, not something to take in a monthly PR.
+      - dependency-name: "com.android.application"
+        update-types: ["version-update:semver-major"]
+    groups:
+      kotlin:
+        patterns: ["org.jetbrains.kotlin*"]
+      androidx:
+        patterns: ["androidx.*"]
+      other-gradle:
+        patterns: ["*"]
+        exclude-patterns: ["org.jetbrains.kotlin*", "androidx.*"]

@@ -409,7 +409,7 @@ toggling a rule.
   history is the record; a hand-maintained changelog for a single-consumer app would drift.
 - **2026-08-31, dependency updates**: dependabot opens monthly PRs for github-actions and
   gradle. Versions live only in `gradle/libs.versions.toml` and the `*.lockfile` set; the flake
-  pins the JDK, Gradle, and SDK separately and is bumped by hand.
+  pins the JDK, Gradle, and SDK separately and is bumped by hand. See "Dependency updates".
 - **2026-08-31, coverage floor 90**: measured 92.9% at the time. Ratchet upward only.
 - **2026-08-31, ruff must be told about `cli/kata`**: the CLI is an executable script with no
   `.py` extension, so ruff matched nothing under `cli/` and reported success while linting only
@@ -418,6 +418,33 @@ toggling a rule.
 - **2026-08-31, real org.json in tests**: `android.jar` ships stubs that return null under
   `isReturnDefaultValues`, so every persistence test silently passed while writing nothing.
   `testImplementation(libs.json)` shadows the stub.
+
+## Dependency updates
+
+Dependabot bumps `gradle/libs.versions.toml` but cannot regenerate the Gradle lockfiles, so the
+lock still pins the old version and resolution fails before any check runs:
+
+```
+Could not resolve com.google.android.material:material:1.14.0.
+  Cannot find a version that satisfies the version constraints
+```
+
+CI refreshes the locks on a dependabot branch and commits them, inside the same job that then
+builds. That placement is deliberate: a push made with `GITHUB_TOKEN` does not retrigger
+workflows, so doing it in a follow-up job would leave a correct branch wearing a stale red
+check.
+
+If that step is ever unavailable, the manual procedure is to check the branch out and run:
+
+```
+nix develop --command gradle dependencies :app:dependencies --write-locks
+```
+
+then commit the `*.lockfile` changes onto the PR branch.
+
+AGP major versions are ignored by dependabot on purpose. AGP 9 changes the Kotlin plugin wiring
+and requires Gradle 9, which is a deliberate migration rather than something to take in a
+monthly PR. Close such a PR rather than merging it.
 
 ## Build and deploy
 
