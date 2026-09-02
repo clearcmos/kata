@@ -434,7 +434,15 @@ builds. That placement is deliberate: a push made with `GITHUB_TOKEN` does not r
 workflows, so doing it in a follow-up job would leave a correct branch wearing a stale red
 check.
 
-If that step is ever unavailable, the manual procedure is to check the branch out and run:
+One approval click remains per Gradle PR. Pushing the refreshed lock moves the branch head, and
+GitHub holds the run it queues for a bot-authored commit as `action_required`. The run that did
+the relock has already gone green on the same content, so approving is a formality:
+
+```
+gh api -X POST repos/clearcmos/kata/actions/runs/<id>/approve
+```
+
+If the refresh step is ever unavailable, the manual procedure is to check the branch out and run:
 
 ```
 nix develop --command gradle dependencies :app:dependencies --write-locks
