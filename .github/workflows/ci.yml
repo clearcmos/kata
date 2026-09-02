@@ -37,16 +37,29 @@ jobs:
       - name: Refresh dependency locks on a dependabot branch
         if: github.actor == 'dependabot[bot]' && github.event_name == 'pull_request'
         run: |
-          gradle dependencies :app:dependencies --write-locks
-          if git diff --quiet -- '*.lockfile'; then
-            echo "locks already current"
-          else
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          set -euo pipefail
+          remote="https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Dependabot can rebase the branch while this run is in flight, so work from the
+          # current tip and retry rather than pushing onto a ref that has already moved.
+          for attempt in 1 2 3; do
+            git fetch --quiet "$remote" "$GITHUB_HEAD_REF"
+            git reset --quiet --hard FETCH_HEAD
+            gradle dependencies :app:dependencies --write-locks
+            if git diff --quiet -- '*.lockfile'; then
+              echo "locks already current"
+              exit 0
+            fi
             git commit -m "Refresh Gradle dependency locks" -- '*.lockfile'
-            git push "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}" \
-              "HEAD:${GITHUB_HEAD_REF}"
-          fi
+            if git push "$remote" "HEAD:${GITHUB_HEAD_REF}"; then
+              echo "pushed refreshed locks on attempt ${attempt}"
+              exit 0
+            fi
+            echo "branch moved under us, retrying"
+          done
+          echo "could not push refreshed locks after 3 attempts" >&2
+          exit 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
