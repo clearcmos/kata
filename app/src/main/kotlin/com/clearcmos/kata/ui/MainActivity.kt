@@ -46,7 +46,7 @@ class MainActivity : AppCompatActivity() {
         binding.list.adapter = adapter
         binding.startEngine.setOnClickListener {
             KataService.start(this)
-            binding.root.postDelayed({ refresh() }, START_SETTLE_MS)
+            awaitEngine()
         }
 
         KataService.start(this)
@@ -56,6 +56,19 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         refresh()
+        // startForegroundService returns before the service has run onCreate, so the very first
+        // paint after a cold start read isRunning while it was still false and then never
+        // re-rendered. The screen sat on "Engine stopped" while the engine was serving requests.
+        if (!KataService.isRunning) awaitEngine()
+    }
+
+    /** Re-renders as soon as the engine reports itself up, or gives up and shows the truth. */
+    private fun awaitEngine(attempts: Int = ENGINE_START_ATTEMPTS) {
+        if (KataService.isRunning || attempts <= 0) {
+            refresh()
+            return
+        }
+        binding.root.postDelayed({ awaitEngine(attempts - 1) }, ENGINE_POLL_MS)
     }
 
     private fun requestMissingRuntimePermissions() {
@@ -178,7 +191,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private companion object {
-        const val START_SETTLE_MS = 400L
+        const val ENGINE_POLL_MS = 200L
+        const val ENGINE_START_ATTEMPTS = 15
         const val TOKEN_PREVIEW = 8
     }
 }

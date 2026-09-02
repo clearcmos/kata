@@ -189,6 +189,28 @@ screenshot:
 adb shell uiautomator dump /sdcard/win.xml && adb shell cat /sdcard/win.xml
 ```
 
+### startForegroundService returns before the service exists
+
+`MainActivity` starts the engine then immediately renders its status from
+`KataService.isRunning`. That flag is set in the service's `onCreate`, which has not run yet
+when `startForegroundService` returns, so the first paint after a cold start showed
+"Engine stopped" with a Start engine button while the engine was already serving requests.
+Nothing re-rendered afterwards, so the wrong status stuck until the activity was left and
+re-entered.
+
+The status itself was correct at the instant it was read, which is what makes this kind of bug
+persist: every individual piece behaves, and only the timing is wrong. `awaitEngine` now
+re-renders as soon as the flag flips, and gives up after a bounded number of polls so a genuine
+failure to start still shows as stopped.
+
+Sampling the UI over time is what catches it; a single screenshot after a fixed sleep can land
+on either side:
+
+```
+adb shell am force-stop <pkg> && adb shell am start -n <pkg>/.ui.MainActivity
+adb shell uiautomator dump /sdcard/w.xml && adb shell cat /sdcard/w.xml
+```
+
 ### buildMap shadows a property named like a Map member
 
 `FieldSpec.toMap()` used `buildMap { ... if (values.isNotEmpty()) put("values", values) }`. Inside
