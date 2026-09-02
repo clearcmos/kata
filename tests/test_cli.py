@@ -141,3 +141,57 @@ class FactParsingTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BuildStateTest(unittest.TestCase):
+    def test_captures_only_what_the_repo_cannot_rebuild(self):
+        # Rule bodies are excluded on purpose: two sources of truth for the same rules would
+        # eventually disagree, and the repo has to win.
+        state = kata.build_state(
+            [
+                {
+                    "id": "a",
+                    "enabled": True,
+                    "trigger": {"type": "manual"},
+                    "actions": [{"type": "log", "message": "x"}],
+                    "params": [{"key": "host", "value": "10.0.0.2"}],
+                }
+            ],
+            {"counter": "7"},
+        )
+        self.assertEqual({"a": {"host": "10.0.0.2"}}, state["params"])
+        self.assertEqual({"counter": "7"}, state["vars"])
+        self.assertEqual({"a": True}, state["enabled"])
+        self.assertNotIn("actions", json.dumps(state))
+
+    def test_a_rule_without_parameters_is_omitted_from_params(self):
+        state = kata.build_state([{"id": "plain", "enabled": True}], {})
+        self.assertEqual({}, state["params"])
+        self.assertEqual({"plain": True}, state["enabled"])
+
+    def test_disabled_state_is_captured(self):
+        state = kata.build_state([{"id": "off", "enabled": False}], {})
+        self.assertEqual({"off": False}, state["enabled"])
+
+    def test_enabled_defaults_to_true_when_absent(self):
+        self.assertEqual({"x": True}, kata.build_state([{"id": "x"}], {})["enabled"])
+
+    def test_the_serialized_form_is_stable_so_a_no_op_pull_makes_no_diff(self):
+        rules = [{"id": "b", "params": [{"key": "z", "value": "1"}, {"key": "a", "value": "2"}]}]
+        first = json.dumps(kata.build_state(rules, {}), indent=2, sort_keys=True)
+        second = json.dumps(kata.build_state(list(rules), {}), indent=2, sort_keys=True)
+        self.assertEqual(first, second)
+
+
+class PullRestoreArgsTest(unittest.TestCase):
+    def parse(self, argv):
+        return kata.build_parser().parse_args(argv)
+
+    def test_pull_defaults_into_the_private_arch_repo(self):
+        self.assertTrue(str(self.parse(["pull"]).out).endswith("config/kata/device-state.json"))
+
+    def test_pull_destination_is_overridable(self):
+        self.assertEqual("/tmp/x.json", self.parse(["pull", "--out", "/tmp/x.json"]).out)
+
+    def test_restore_reads_the_same_default(self):
+        self.assertTrue(str(self.parse(["restore"]).file).endswith("config/kata/device-state.json"))

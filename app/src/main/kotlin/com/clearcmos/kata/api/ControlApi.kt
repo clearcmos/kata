@@ -109,6 +109,24 @@ class ControlApi(
             segments == listOf("simulate") && request.method == "POST" ->
                 simulate(request)
 
+            // Persisted variables are state a rule wrote for itself, so they are the one thing
+            // on the device that cannot be rebuilt from the repo. They need a way out, and back.
+            segments == listOf("vars") && request.method == "GET" ->
+                ok(mapOf("vars" to engine.vars().all()))
+
+            segments == listOf("vars") && request.method == "PUT" -> {
+                val incoming = Json.toMap(JSONObject(request.body).getJSONObject("vars"))
+                val store = engine.vars()
+                store.clear()
+                incoming.forEach { (name, value) -> store.set(name, value?.toString().orEmpty()) }
+                ok(mapOf("restored" to incoming.size))
+            }
+
+            segments == listOf("vars") && request.method == "DELETE" -> {
+                engine.vars().clear()
+                ok(mapOf("cleared" to true))
+            }
+
             segments == listOf("runs") && request.method == "GET" ->
                 ok(
                     mapOf(

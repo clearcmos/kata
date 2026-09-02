@@ -390,6 +390,19 @@ The line to hold: logic that can run on the JVM lives in a class that does. `Eng
 `ControlApi` both take their collaborators through the primary constructor for exactly this
 reason, with a `Context` convenience constructor that assembles the real ones.
 
+### Device-only state
+
+Parameter values, persisted variables, and the armed/disarmed flag live only on the phone; the
+repo cannot rebuild them. `kata pull` captures those three things and nothing else, and
+`kata restore` reapplies them after a `kata push`.
+
+The pulled file carries no timestamp, so a pull that changes nothing produces no diff and real
+changes stay visible in the destination repo's history. Rule bodies are excluded on purpose: a
+second copy of the rules would eventually disagree with `automations/`.
+
+Run `kata pull` after changing anything on the phone, which mostly means editing a parameter or
+toggling a rule.
+
 ### Decisions
 
 - **2026-08-31, changelog**: no `CHANGELOG.md`. Commit messages carry the reasoning and git

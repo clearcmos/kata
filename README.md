@@ -79,6 +79,11 @@ Because the phone owns those values, `kata push` carries them across: a sync upd
 param's label, type, and the default for a newly declared key, but keeps a value you set on the
 device. `kata push --reset-params` overwrites them with the repo's instead.
 
+That also means parameter values, persisted variables, and which rules are armed exist only on
+the phone. `kata pull` writes exactly those to a file so they survive a wipe or a reinstall, and
+`kata restore` puts them back after a `kata push`. Rule bodies are deliberately excluded: two
+sources of truth for the same rules would eventually disagree, and the repo has to win.
+
 Conditions are ANDed. Actions run in order and stop at the first failure, because later actions
 generally assume the earlier ones landed.
 
@@ -199,6 +204,8 @@ engine. Python 3 standard library only.
 
 ```
 kata push [--reset-params]         replace the device rule set with automations/
+kata pull [--out FILE]             save the device-only state (params, variables)
+kata restore [FILE]                put a pulled state back after a wipe
 kata validate                      check automations/ against the device, install nothing
 kata list                          what is installed, armed, and how it last ran
 kata show <id>                     one automation as the device holds it

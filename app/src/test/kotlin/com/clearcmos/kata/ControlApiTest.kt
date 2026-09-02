@@ -19,6 +19,7 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -314,5 +315,34 @@ class ControlApiTest {
         val stored: Automation = engine.store.find("a")!!
         assertEquals(Step("log", stored.actions.single().args).type, "log")
         assertEquals("hi", stored.actions.single().args.optString("message"))
+    }
+
+    @Test
+    fun `persisted variables can be read out and put back`() {
+        // The one piece of device state the repo cannot rebuild, so it needs a way out and back.
+        engine.vars().set("counter", "7")
+        @Suppress("UNCHECKED_CAST")
+        val read = json(call("GET", "/vars").body)["vars"] as Map<String, Any?>
+        assertEquals("7", read["counter"])
+
+        engine.vars().clear()
+        assertEquals(200, call("PUT", "/vars", """{"vars":{"counter":"9","seen":"yes"}}""").status)
+        assertEquals("9", engine.vars().get("counter"))
+        assertEquals("yes", engine.vars().get("seen"))
+    }
+
+    @Test
+    fun `restoring variables replaces rather than merges`() {
+        engine.vars().set("stale", "old")
+        call("PUT", "/vars", """{"vars":{"fresh":"new"}}""")
+        assertNull(engine.vars().get("stale"))
+        assertEquals("new", engine.vars().get("fresh"))
+    }
+
+    @Test
+    fun `variables can be cleared`() {
+        engine.vars().set("a", "1")
+        assertEquals(200, call("DELETE", "/vars").status)
+        assertEquals(emptyMap<String, String>(), engine.vars().all())
     }
 }

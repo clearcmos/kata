@@ -26,6 +26,10 @@ PORT = 8770
 TOKEN_PATH = f"/sdcard/Android/data/{PACKAGE}/files/api-token"
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_DIR = REPO_ROOT / "automations"
+# The device holds one thing the repo cannot rebuild: the parameter values and persisted
+# variables set on the phone. They land in the private arch repo, which is the machine's
+# source of truth and is not public. Overridable with --out.
+DEFAULT_STATE = Path.home() / "arch" / "config" / "kata" / "device-state.json"
 
 BOLD, DIM, RED, GREEN, YELLOW, RESET = "\033[1m", "\033[2m", "\033[31m", "\033[32m", "\033[33m", "\033[0m"
 
@@ -178,6 +182,78 @@ def cmd_validate(args):
             print(f"{colour('bad', RED)} {name}")
             print_problems(body.get("problems", []))
     raise SystemExit(1 if failed else 0)
+
+
+def build_state(automations: list, variables: dict) -> dict:
+    """Shapes the device-only state.
+
+    Only what cannot be regenerated from automations/. Rule bodies are deliberately left out so
+    this file never becomes a competing source of truth for the rules themselves.
+    """
+    return {
+        "params": {
+            a["id"]: {p["key"]: p["value"] for p in a.get("params", [])}
+            for a in automations
+            if a.get("params")
+        },
+        "vars": variables,
+        "enabled": {a["id"]: a.get("enabled", True) for a in automations},
+    }
+
+
+def cmd_pull(args):
+    """Captures the device-only state: parameter values and persisted variables."""
+    api = Api()
+    _, automations = api.request("GET", "/automations")
+    _, variables = api.request("GET", "/vars")
+
+    state = build_state(automations.get("automations", []), variables.get("vars", {}))
+    params = state["params"]
+
+    out = Path(args.out).expanduser()
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # No timestamp on purpose: a pull that changes nothing must produce no diff, or the file
+    # becomes noise in the repo and real changes stop standing out.
+    text = json.dumps(state, indent=2, sort_keys=True) + "\n"
+    unchanged = out.exists() and out.read_text() == text
+    out.write_text(text)
+
+    rules = len(state["enabled"])
+    values = sum(len(v) for v in params.values())
+    status = "unchanged" if unchanged else colour("updated", GREEN)
+    print(f"{status}  {out}")
+    print(f"  {rules} automations, {values} parameter values, {len(state['vars'])} variables")
+
+
+def cmd_restore(args):
+    """Puts a pulled state back after a wipe or reinstall. Run kata push first."""
+    path = Path(args.file).expanduser()
+    if not path.is_file():
+        die(f"no state file at {path}. Run `kata pull` on a working device first.")
+    state = json.loads(path.read_text())
+    api = Api()
+
+    applied = 0
+    missing = []
+    for rule_id, params in state.get("params", {}).items():
+        for key, value in params.items():
+            status, _ = api.request("POST", f"/automations/{rule_id}/params", {"key": key, "value": value})
+            if status == 200:
+                applied += 1
+            else:
+                missing.append(f"{rule_id}.{key}")
+
+    for rule_id, enabled in state.get("enabled", {}).items():
+        api.request("POST", f"/automations/{rule_id}/{'enable' if enabled else 'disable'}")
+
+    if state.get("vars"):
+        api.request("PUT", "/vars", {"vars": state["vars"]})
+
+    print(colour(f"restored {applied} parameter value(s)", GREEN))
+    if missing:
+        # Almost always means the rule was not pushed first, so there was nothing to set.
+        print(colour(f"  no such parameter on the device: {', '.join(missing)}", YELLOW))
+        print("  push the automations first, then restore.")
 
 
 def cmd_list(args):
@@ -362,6 +438,14 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("validate", help="check automations/ against the device without installing")
     p.add_argument("dir", nargs="?", default=str(DEFAULT_DIR))
     p.set_defaults(func=cmd_validate)
+
+    p = sub.add_parser("pull", help="save the device-only state (parameter values, variables)")
+    p.add_argument("--out", default=str(DEFAULT_STATE), help=f"destination (default {DEFAULT_STATE})")
+    p.set_defaults(func=cmd_pull)
+
+    p = sub.add_parser("restore", help="apply a pulled state back onto the device")
+    p.add_argument("file", nargs="?", default=str(DEFAULT_STATE))
+    p.set_defaults(func=cmd_restore)
 
     p = sub.add_parser("list", help="list installed automations")
     p.set_defaults(func=cmd_list)
