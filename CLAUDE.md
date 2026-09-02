@@ -64,13 +64,13 @@ What is reachable, in rough order of what it costs the user:
 | --- | --- | --- |
 | Normal and runtime permissions | nothing, or one dialog | most of the current vocabulary |
 | `WRITE_SECURE_SETTINGS` | one `adb shell pm grant`, re-run after each install | `secure_setting`, `global_setting` |
-| Settings special access | a toggle the user taps | DND policy, notification listener, modify system settings |
-| AccessibilityService | a toggle the user taps | **implemented**: `app_foreground` / `app_background` triggers, `app_foreground` condition, `global_action` and `tap_ui` actions |
+| Settings special access | a toggle in Settings | DND policy, notification listener, modify system settings |
+| AccessibilityService | a toggle in Settings | **implemented**: `app_foreground` / `app_background` triggers, `app_foreground` condition, `global_action` and `tap_ui` actions |
 | Shizuku | user starts it; re-armed over adb after a reboot | ADB shell privilege: `svc`, `pm`, `am force-stop`, `cmd` |
 
 Shizuku is not root. It runs at ADB shell privilege and is available on this device; the user
 already has a reconnect script and a wireless-debugging Quick Settings tile, so re-arming it
-is one command. It stays a live option unless the user says otherwise.
+is one command. It stays a live option.
 
 Genuinely out of reach under this ceiling: toggling Wi-Fi or mobile data through an API
 (removed for third-party callers in Android 10) and force-stopping another app. Say so in one
@@ -233,7 +233,7 @@ settings put global kata_selftest 1    # rule must fire
 settings delete global kata_selftest
 ```
 
-That covers the machinery. The real tile toggle is then a one-off check for the user to run at
+That covers the machinery. The real tile toggle is then a one-off check to run at
 the phone, which is also the only safe place to run it.
 
 ### Reboot survival, verified
@@ -263,7 +263,7 @@ Two things worth knowing:
   belongs in the install cycle, not in a boot checklist. Special access granted through Settings
   (accessibility, DND, notification listener) survives too.
 - **A reboot clears wireless debugging** and needs a tap on the phone to restore, matching the
-  note in the user's global CLAUDE.md. A reconnect script then finds the new random
+  note above. A reconnect script then finds the new random
   port and re-arming 5555. Budget for that before rebooting a device you are driving remotely.
 
 The `engine-heartbeat` automation exists to leave a dated record of this in the run log. The
