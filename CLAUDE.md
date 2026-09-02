@@ -58,7 +58,7 @@ Splitting work into a second app buys nothing: Android enforces permissions per 
 APK has exactly this app's ceiling. New capability comes from a different class of grant, not
 from more apps, which is why every tier lives in kata behind a `Requirement`.
 
-What is reachable, in rough order of what it costs the user:
+What is reachable, in rough order of what it costs to obtain:
 
 | Tier | Cost | Unlocks |
 | --- | --- | --- |
@@ -68,9 +68,9 @@ What is reachable, in rough order of what it costs the user:
 | AccessibilityService | a toggle in Settings | **implemented**: `app_foreground` / `app_background` triggers, `app_foreground` condition, `global_action` and `tap_ui` actions |
 | Shizuku | user starts it; re-armed over adb after a reboot | ADB shell privilege: `svc`, `pm`, `am force-stop`, `cmd` |
 
-Shizuku is not root. It runs at ADB shell privilege and is available on this device; the user
-already has a reconnect script and a wireless-debugging Quick Settings tile, so re-arming it
-is one command. It stays a live option.
+Shizuku is not root. It runs at ADB shell privilege and is available on this device. With a
+reconnect script and a wireless-debugging Quick Settings tile in place, re-arming it after a
+reboot is one command, so it stays a live option.
 
 Genuinely out of reach under this ceiling: toggling Wi-Fi or mobile data through an API
 (removed for third-party callers in Android 10) and force-stopping another app. Say so in one
