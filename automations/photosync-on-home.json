@@ -1,0 +1,19 @@
+{
+  "id": "photosync-on-home",
+  "name": "Open PhotoSync on arriving home",
+  "description": "PhotoSync 4.3.4's background autotransfer worker finds new media and queues none of it, while the same scan run with the app in the foreground transfers immediately. Until that is fixed upstream, bring the app to the front when the phone joins the home network; with PhotoSync's 'Autotransfer only in the background' switched off, opening it is what starts the transfer. The lease check keeps this to the home LAN, and the wait lets the default route move off mobile data first. If the phone is locked the launch is deferred by Android until the next unlock, which is still the earliest moment anything could have run. Needs the appear-on-top grant; kata reports it as unmet otherwise.",
+  "enabled": true,
+  "trigger": { "type": "wifi_connected" },
+  "conditions": [
+    { "type": "ip_address", "equals": "${params.ip}" }
+  ],
+  "actions": [
+    { "type": "wait", "ms": 5000 },
+    { "type": "launch_app", "package": "${params.package}" },
+    { "type": "log", "message": "opened ${params.package} so its autotransfer runs" }
+  ],
+  "params": [
+    { "key": "ip", "label": "Expected IPv4 address", "type": "string", "value": "CHANGE-ME" },
+    { "key": "package", "label": "App to open", "type": "string", "value": "com.touchbyte.photosync" }
+  ]
+}

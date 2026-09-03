@@ -11,6 +11,7 @@ import android.net.NetworkCapabilities
 import android.net.wifi.WifiInfo
 import android.os.BatteryManager
 import android.os.PowerManager
+import java.net.Inet4Address
 
 /**
  * Point-in-time reads of the device, shared by condition evaluation and /capabilities.
@@ -35,6 +36,8 @@ interface DeviceReadings {
     fun isWifiConnected(): Boolean
 
     fun wifiSsid(): String?
+
+    fun ipAddress(): String?
 
     fun isDndActive(): Boolean
 
@@ -80,6 +83,36 @@ class DeviceState(private val context: Context) : DeviceReadings {
         val info = capabilities.transportInfo as? WifiInfo ?: return null
         val ssid = info.ssid?.trim('"').orEmpty()
         return ssid.takeIf { it.isNotEmpty() && it != UNKNOWN_SSID }
+    }
+
+    /**
+     * The IPv4 address the device holds on Wi-Fi, or null when it has none.
+     *
+     * The Wi-Fi network specifically, never the active one. Those differ exactly when this is
+     * asked: rejoining Wi-Fi leaves mobile data as the default route until the new link
+     * validates, so reading the active network answers with the carrier's address for the first
+     * moments of a join, which is precisely when a `wifi_connected` rule runs. A VPN is skipped
+     * for the same reason, and because it reports the transports of the network beneath it.
+     *
+     * IPv4 only and deliberately so: this exists to identify a known LAN by its lease, and a
+     * device's IPv6 addresses rotate under privacy extensions, so matching one would be a
+     * condition that stops being true on its own.
+     */
+    override fun ipAddress(): String? {
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return null
+        val wifi =
+            manager.allNetworks.firstOrNull { network ->
+                val capabilities = manager.getNetworkCapabilities(network) ?: return@firstOrNull false
+                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+                    !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
+            } ?: return null
+        return manager
+            .getLinkProperties(wifi)
+            ?.linkAddresses
+            ?.map { it.address }
+            ?.filterIsInstance<Inet4Address>()
+            ?.firstOrNull { !it.isLoopbackAddress }
+            ?.hostAddress
     }
 
     override fun isDndActive(): Boolean {

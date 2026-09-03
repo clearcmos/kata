@@ -312,10 +312,27 @@ class ActionRunner(
         }
     }
 
+    /**
+     * Android drops an activity launch from a background service without an exception: the
+     * call returns and the only trace is a "Background activity launch blocked" line in logcat.
+     * The "appear on top" grant is the exemption, so its absence is checked up front and
+     * reported as the failure it is, rather than as a launch that never happened.
+     */
+    private fun requireBackgroundLaunch() {
+        if (!Settings.canDrawOverlays(context)) {
+            throw ActionError(
+                "kata may not launch activities from the background; allow it under " +
+                    "Settings > Apps > Special app access > Appear on top, or run " +
+                    "adb shell appops set ${context.packageName} SYSTEM_ALERT_WINDOW allow"
+            )
+        }
+    }
+
     private fun launchApp(packageName: String): String {
         val intent =
             context.packageManager.getLaunchIntentForPackage(packageName)
                 ?: throw ActionError("$packageName is not installed, or has no launcher activity")
+        requireBackgroundLaunch()
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         context.startActivity(intent)
         return "launched $packageName"
@@ -325,6 +342,7 @@ class ActionRunner(
         val intent =
             runCatching { Intent.parseUri(uri, Intent.URI_INTENT_SCHEME) }
                 .getOrElse { Intent(Intent.ACTION_VIEW, uri.toUri()) }
+        requireBackgroundLaunch()
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         runCatching { context.startActivity(intent) }
             .onFailure { throw ActionError("nothing handles $uri: ${it.message}") }

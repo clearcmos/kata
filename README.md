@@ -89,7 +89,7 @@ generally assume the earlier ones landed.
 
 ## Vocabulary
 
-21 triggers, 11 conditions, 40 actions. `kata schema` prints all of them with their fields and
+21 triggers, 12 conditions, 40 actions. `kata schema` prints all of them with their fields and
 prerequisites. The short version:
 
 - **Triggers**: `manual`, `boot_completed`, `power_connected`, `power_disconnected`,
@@ -98,7 +98,8 @@ prerequisites. The short version:
   `airplane_mode`, `time_of_day`, `interval`, `notification_posted`, `notification_removed`,
   `app_foreground`, `app_background`, `setting_changed`
 - **Conditions**: `time_between`, `day_of_week`, `battery_below`, `battery_above`, `charging`,
-  `screen_on`, `wifi_ssid`, `wifi_connected`, `dnd_active`, `app_installed`, `app_foreground`
+  `screen_on`, `wifi_ssid`, `ip_address`, `wifi_connected`, `dnd_active`, `app_installed`,
+  `app_foreground`
 - **Actions**: `notify`, `cancel_notification`, `dnd`, `ringer_mode`, `volume`, `media`,
   `vibrate`, `torch`, `tts`, `http_request`, `launch_app`, `start_activity`, `broadcast`,
   `clipboard`, `secure_setting`, `global_setting`, `system_setting`, `wake_screen`, `wait`,
@@ -260,6 +261,7 @@ adb shell pm grant com.clearcmos.kata android.permission.POST_NOTIFICATIONS
 adb shell pm grant com.clearcmos.kata android.permission.ACCESS_FINE_LOCATION
 adb shell pm grant com.clearcmos.kata android.permission.ACCESS_COARSE_LOCATION
 adb shell pm grant com.clearcmos.kata android.permission.BLUETOOTH_CONNECT
+adb shell appops set com.clearcmos.kata SYSTEM_ALERT_WINDOW allow
 ```
 
 Open the app once so the service starts and the token is written, then `cli/kata doctor`.
@@ -267,7 +269,7 @@ Open the app once so the service starts and the token is written, then `cli/kata
 `adb install -r` clears every permission granted with `pm grant`, so the grants above are
 re-run after each install, not just the first.
 
-Three prerequisites cannot be granted over adb and need a tap on the phone. `kata capabilities`
+These prerequisites are special access rather than permissions and need a tap on the phone. `kata capabilities`
 names each one and where it lives in Settings:
 
 - Do Not Disturb access, for the `dnd` and `ringer_mode` actions
@@ -275,6 +277,8 @@ names each one and where it lives in Settings:
 - Modify system settings, for the `system_setting` action
 - Accessibility, for `app_foreground` and `app_background`, the `app_foreground` condition, and
   the `global_action` and `tap_ui` actions
+- Appear on top, for `launch_app` and `start_activity`. It is the exemption from Android's
+  background activity launch block; the `appops` line above grants it over adb
 
 Accessibility is the widest grant kata asks for: while it is on, kata can read everything drawn
 on screen. It is off by default, nothing enables it implicitly, and turning it off in

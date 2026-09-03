@@ -97,6 +97,15 @@ class Capabilities(private val context: Context) : CapabilityReporter {
                 context.getSystemService(AlarmManager::class.java)?.canScheduleExactAlarms() == true,
                 "Settings > Apps > Special app access > Alarms and reminders > kata"
             )
+
+        // "Appear on top" is what exempts an app from the background activity launch block.
+        // Without it startActivity() from the service returns normally and nothing happens.
+        Requirement.DRAW_OVER_APPS ->
+            Status(
+                Settings.canDrawOverlays(context),
+                "Settings > Apps > Special app access > Appear on top > kata, or: " +
+                    "adb shell appops set $pkg SYSTEM_ALERT_WINDOW allow"
+            )
     }
 
     override fun statusRemedy(requirement: Requirement): String = status(requirement).remedy

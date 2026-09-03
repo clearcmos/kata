@@ -23,7 +23,8 @@ enum class Requirement {
     BLUETOOTH,
     EXACT_ALARM,
     ACCESSIBILITY,
-    SEND_SMS
+    SEND_SMS,
+    DRAW_OVER_APPS
 }
 
 data class FieldSpec(
@@ -129,8 +130,20 @@ object Vocabulary {
             TypeSpec(
                 "wifi_connected",
                 SpecKind.TRIGGER,
-                "Joined a Wi-Fi network. Omit ssid to fire on any network.",
-                listOf(str("ssid", "Only fire for this network name.", required = false)),
+                "Joined a Wi-Fi network. Omit ssid to fire on any network. Also fires when the " +
+                    "engine starts while already connected, which is what lets a rule react to a " +
+                    "network the device joined before the engine was up.",
+                listOf(
+                    str(
+                        "ssid",
+                        "Only fire for this network name. Frequently unavailable, and a filter that " +
+                            "never matches is silent: the platform withholds the name from a caller " +
+                            "without background location, and the join announced at engine start " +
+                            "carries no name at all. Identify a network with an ip_address condition " +
+                            "instead.",
+                        required = false
+                    )
+                ),
                 listOf(Requirement.LOCATION)
             ),
             TypeSpec("wifi_disconnected", SpecKind.TRIGGER, "Left a Wi-Fi network."),
@@ -262,9 +275,20 @@ object Vocabulary {
             TypeSpec(
                 "wifi_ssid",
                 SpecKind.CONDITION,
-                "Connected Wi-Fi network name matches.",
+                "Connected Wi-Fi network name matches. Reports the name as unreadable unless the " +
+                    "app holds background location, so prefer ip_address to identify a network.",
                 listOf(str("equals", "Exact network name.")),
                 listOf(Requirement.LOCATION)
+            ),
+            TypeSpec(
+                "ip_address",
+                SpecKind.CONDITION,
+                "The device's IPv4 address on Wi-Fi matches. Reads the Wi-Fi network rather than " +
+                    "whichever one currently holds the default route, so it is already correct in the " +
+                    "moments after a join while mobile data is still the default. The reliable way to " +
+                    "confirm a rule is running on the network you meant, since the ssid is usually " +
+                    "unreadable.",
+                listOf(str("equals", "Exact IPv4 address, for example 192.0.2.13."))
             ),
             TypeSpec(
                 "wifi_connected",
@@ -382,14 +406,19 @@ object Vocabulary {
             TypeSpec(
                 "launch_app",
                 SpecKind.ACTION,
-                "Start an app's launcher activity.",
-                listOf(str("package", "Package name."))
+                "Start an app's launcher activity and bring it to the front. Android blocks activity " +
+                    "launches from a background service unless the app may appear on top, so this " +
+                    "needs that grant; without it the launch is silently dropped by the platform.",
+                listOf(str("package", "Package name.")),
+                listOf(Requirement.DRAW_OVER_APPS)
             ),
             TypeSpec(
                 "start_activity",
                 SpecKind.ACTION,
-                "Start an activity from a URI, for example an intent: or https: URL.",
-                listOf(str("uri", "URI to open."))
+                "Start an activity from a URI, for example an intent: or https: URL. Same background " +
+                    "launch restriction as launch_app.",
+                listOf(str("uri", "URI to open.")),
+                listOf(Requirement.DRAW_OVER_APPS)
             ),
             TypeSpec(
                 "broadcast",

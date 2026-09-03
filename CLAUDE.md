@@ -64,7 +64,7 @@ What is reachable, in rough order of what it costs to obtain:
 | --- | --- | --- |
 | Normal and runtime permissions | nothing, or one dialog | most of the current vocabulary |
 | `WRITE_SECURE_SETTINGS` | one `adb shell pm grant`, re-run after each install | `secure_setting`, `global_setting` |
-| Settings special access | a toggle in Settings | DND policy, notification listener, modify system settings |
+| Settings special access | a toggle in Settings, or `appops set` over adb for some | DND policy, notification listener, modify system settings, appear on top (`launch_app`, `start_activity`) |
 | AccessibilityService | a toggle in Settings | **implemented**: `app_foreground` / `app_background` triggers, `app_foreground` condition, `global_action` and `tap_ui` actions |
 | Shizuku | user starts it; re-armed over adb after a reboot | ADB shell privilege: `svc`, `pm`, `am force-stop`, `cmd` |
 
@@ -326,6 +326,123 @@ That needs `flagRetrieveInteractiveWindows` in the service config.
 Note also that the node carrying a label is usually not the clickable one, so `tap_ui` walks up
 to the nearest clickable ancestor before performing `ACTION_CLICK`.
 
+### launch_app reported success while the platform dropped the launch
+
+`startActivity()` from the foreground service returns normally when Android refuses a
+background activity launch. The action logged `launched com.example` and nothing appeared; the
+only evidence was in logcat:
+
+```
+ActivityTaskManager: Background activity launch blocked! goo.gle/android-bal [callingPackage: com.clearcmos.kata ...]
+```
+
+A foreground service alone is not an exemption. "Appear on top" (`SYSTEM_ALERT_WINDOW`) is, and
+it is grantable over adb with `appops set`, so it is now a `Requirement` on `launch_app` and
+`start_activity`, the install block grants it, and the action fails with the remedy instead of
+claiming a launch the platform never performed. A locked phone still defers the launched
+activity until the next unlock; that is the platform, not kata.
+
+### The Wi-Fi SSID is not readable from the engine
+
+`ACCESS_FINE_LOCATION` granted and the location master switch on are not enough. The platform
+withholds the network name from a caller that does not also hold background location, and it
+withholds it identically whether the read comes from the service or with the activity in front,
+so there is no window in which it works:
+
+```
+skipped_conditions  probe
+  ERR condition:wifi_ssid: ssid unreadable; grant location to match on it
+```
+
+`wifi_ssid` at least says so. The ssid filter on `wifi_connected` is the worse half, because a
+trigger that never matches is indistinguishable from a rule nobody wrote.
+
+Declaring `ACCESS_BACKGROUND_LOCATION` would fix it and was declined: always-on location is a
+large grant to buy one string. `ip_address` identifies a network instead, needs only
+`ACCESS_NETWORK_STATE`, and matches against a DHCP lease, which is usually what a rule means by
+"this network" anyway. Both spec doc strings now say this, because a field that fails silently
+is an authoring trap and the doc strings are what an authoring agent reads.
+
+### Registering the network callback replays the current network
+
+`registerNetworkCallback` delivers `onCapabilitiesChanged` for a matching network that is
+already connected, so `wifi_connected` fires within a millisecond of `TriggerRegistry.refresh()`
+as well as on a real join:
+
+```
+00:40:55.189 KataTriggers: refreshing registrations for [..., wifi_connected, ...]
+00:40:55.190 KataEngine: wifi_connected matched 1 automation(s)
+```
+
+That is what covers a device joining Wi-Fi before the engine is up, which is the normal order
+after a reboot, and it is the only reason a Wi-Fi rule survives one. The replayed event carries
+no SSID, and `announcedWifi` is set on that first callback so a later one that might carry the
+name is suppressed. A rule that has to work on this path cannot filter on ssid.
+
+### A wifi_connected rule runs before Wi-Fi is the default route
+
+Rejoining Wi-Fi leaves mobile data as the default network until the new link validates.
+`wifi_connected` fires before that, so whatever the rule reads or tries to reach in its first
+moments still sees the carrier's network:
+
+```
+skipped_conditions  wireless-debug-home  (3ms, via wifi_connected)
+  ERR condition:ip_address: ip=100.64.x.x, want 192.0.2.13
+```
+
+That address was in the RFC 6598 shared address space on `rmnet_data0`, the carrier's CGNAT
+lease. The range reads like a Tailscale address
+and is not one; there was no tun interface on the device at all. `ip -4 addr` settles it and a
+guess does not.
+
+`ipAddress()` had asked `getLinkProperties(activeNetwork)`. It now asks the Wi-Fi network
+directly and skips VPNs, which report the transports of the network beneath them and would
+otherwise match a Wi-Fi test.
+
+The same window reaches actions, where reading a different network is no help: a LAN address is
+unroutable over cellular, so the rule's own `ssh` check failed and stopped the run before the
+write it was gating. Hence the leading `wait` and the `retry` on that step.
+
+What makes this class of bug expensive is that every cheap test passes. Firing the rule by hand
+works, and so does the engine-start replay, because both run long after the switchover. Only a
+real join has the window, and on this device exercising a real join costs the adb session.
+
+### Wireless debugging is scoped to one AP, and the platform closes it
+
+There is no need for a rule that turns wireless debugging off when the device leaves Wi-Fi. The
+framework authorises it against a single access point and records which one:
+
+```
+$ adb shell dumpsys adb
+debugging_manager={
+  connected_to_adb=true
+  keystore=... wifiAP/ bssid aa:bb:cc:dd:ee:ff
+```
+
+`AdbDebuggingManager` keeps that BSSID so it can write `adb_wifi_enabled` back to 0 once the
+device is no longer on that AP. It is stricter than a rule on `wifi_disconnected` would be,
+because a roam to another access point changes the BSSID without the network being lost at all.
+
+So the only direction worth automating is on. An off rule would duplicate platform behaviour,
+and a rule that duplicates the platform is one that eventually gets blamed for something it did
+not do.
+
+### An SSH action's command is a request, not a guarantee
+
+Read the target's `authorized_keys` before assuming an `ssh` action runs what it asks for. A key
+pinned with `restrict,command="..."` ignores the `command` field entirely and runs the forced
+command instead.
+
+That turned a cheap reachability check into the one command guaranteed to fail in context: the
+forced command was the adb reconnect script, the check runs *before* wireless debugging is
+switched on, and the script scans for a port that is not open yet and exits non-zero. A failed
+action stops the run, so the check aborted the very write it was there to gate.
+
+sshd still exports the requested command as `SSH_ORIGINAL_COMMAND`, so the fix belongs on the
+workstation rather than in the rule: the forced command answers a `check` verb immediately and
+falls through to its real work otherwise. No `authorized_keys` change, and the existing rule
+that asks for the real command is unaffected.
+
 ### The API token path
 
 `ApiToken` mirrors the token to `getExternalFilesDir(null)`, which lands at
@@ -425,6 +542,14 @@ second copy of the rules would eventually disagree with `automations/`.
 Run `kata pull` after changing anything on the phone, which mostly means editing a parameter or
 toggling a rule.
 
+That split is also what keeps this repo publishable, so it holds for docs and tests too. No real
+network name, address, or hardware address belongs in a file here: a rule gets a
+`${params.key}` placeholder, and an example or a test fixture uses a documentation-reserved
+address (`192.0.2.0/24`, RFC 5737) rather than a real lease. A run record pasted into a finding
+gets the same treatment; the lesson in one never depends on the actual value. An access-point
+BSSID is the one to be most careful with, because public wardriving databases map it to a
+street address.
+
 ### Decisions
 
 - **2026-08-31, changelog**: no `CHANGELOG.md`. Commit messages carry the reasoning and git
@@ -496,6 +621,7 @@ adb shell pm grant com.clearcmos.kata android.permission.POST_NOTIFICATIONS
 adb shell pm grant com.clearcmos.kata android.permission.ACCESS_FINE_LOCATION
 adb shell pm grant com.clearcmos.kata android.permission.ACCESS_COARSE_LOCATION
 adb shell pm grant com.clearcmos.kata android.permission.BLUETOOTH_CONNECT
+adb shell appops set com.clearcmos.kata SYSTEM_ALERT_WINDOW allow
 adb shell am start -n com.clearcmos.kata/.ui.MainActivity
 ```
 

@@ -34,6 +34,8 @@ private class StubDevice(private val charging: Boolean = false) : DeviceReadings
 
     override fun wifiSsid() = "home"
 
+    override fun ipAddress() = "192.0.2.13"
+
     override fun isDndActive() = false
 
     override fun isAppInstalled(packageName: String) = true

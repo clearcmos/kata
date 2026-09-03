@@ -1,0 +1,64 @@
+{
+  "id": "wireless-debug-home",
+  "name": "Turn wireless debugging on at home",
+  "description": "Switch wireless debugging on when the phone joins the home network, so adb is reachable from the workstation without a tap on the device. Home is proved in two steps because the SSID is not readable from the engine on this device: the DHCP lease has to match, and then an SSH connection has to succeed with kata's key, which no other network can fake. The wait and the retries are not padding: the rule runs the instant Wi-Fi appears, while mobile data is still the default route, so a LAN address is briefly unreachable. The check also runs before the setting is written, so its command has to be one that answers immediately rather than one that tries to reach a phone whose adb port is still closed. A failed check stops the run before anything is written. Turning the setting on is what fires wireless-debug-reconnect, so the workstation reconnects on its own.",
+  "enabled": true,
+  "trigger": {
+    "type": "wifi_connected"
+  },
+  "conditions": [
+    {
+      "type": "ip_address",
+      "equals": "${params.ip}"
+    }
+  ],
+  "actions": [
+    {
+      "type": "wait",
+      "ms": 3000
+    },
+    {
+      "type": "ssh",
+      "host": "${params.host}",
+      "user": "${params.user}",
+      "command": "${params.check}",
+      "timeout_ms": 6000,
+      "retry": 3
+    },
+    {
+      "type": "global_setting",
+      "key": "adb_wifi_enabled",
+      "value": "1"
+    },
+    {
+      "type": "log",
+      "message": "wireless debugging on, ${params.ip} with ${params.host} answering"
+    }
+  ],
+  "params": [
+    {
+      "key": "ip",
+      "label": "Expected IPv4 address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "host",
+      "label": "Workstation address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "user",
+      "label": "Login name",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "check",
+      "label": "Identity check command",
+      "type": "string",
+      "value": "check"
+    }
+  ]
+}

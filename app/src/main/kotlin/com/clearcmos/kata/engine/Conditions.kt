@@ -69,6 +69,14 @@ class ConditionEvaluator(private val device: DeviceReadings) {
                 ConditionResult(actual == want, "ssid=$actual, want $want")
             }
 
+            "ip_address" -> {
+                val want = args.string("equals")
+                val actual =
+                    device.ipAddress()
+                        ?: return ConditionResult(false, "no IPv4 address on Wi-Fi")
+                ConditionResult(actual == want, "ip=$actual, want $want")
+            }
+
             "wifi_connected" -> {
                 val want = args.bool("value")
                 val actual = device.isWifiConnected()

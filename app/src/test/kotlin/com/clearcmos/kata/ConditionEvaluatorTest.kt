@@ -15,6 +15,7 @@ private class FakeDevice(
     private val screenOn: Boolean = true,
     private val wifi: Boolean = true,
     private val ssid: String? = "home",
+    private val ip: String? = "192.0.2.13",
     private val dnd: Boolean = false,
     private val installed: Set<String> = setOf("com.example")
 ) : DeviceReadings {
@@ -27,6 +28,8 @@ private class FakeDevice(
     override fun isWifiConnected() = wifi
 
     override fun wifiSsid() = ssid
+
+    override fun ipAddress() = ip
 
     override fun isDndActive() = dnd
 
@@ -79,6 +82,21 @@ class ConditionEvaluatorTest {
         val result = evaluate(FakeDevice(ssid = null), "wifi_ssid", mapOf("equals" to "home"))
         assertFalse(result.matched)
         assertTrue(result.detail, result.detail.contains("location"))
+    }
+
+    @Test
+    fun `ip matching is exact`() {
+        assertTrue(evaluate(FakeDevice(), "ip_address", mapOf("equals" to "192.0.2.13")).matched)
+        assertFalse(evaluate(FakeDevice(), "ip_address", mapOf("equals" to "192.0.2.130")).matched)
+    }
+
+    @Test
+    fun `a device with no address yet cannot satisfy an ip condition`() {
+        // A rule can be evaluated in the gap between joining a network and being given a
+        // lease, and firing on an unknown address would defeat the point of checking it.
+        val result = evaluate(FakeDevice(ip = null), "ip_address", mapOf("equals" to "192.0.2.13"))
+        assertFalse(result.matched)
+        assertTrue(result.detail, result.detail.contains("no IPv4"))
     }
 
     @Test
