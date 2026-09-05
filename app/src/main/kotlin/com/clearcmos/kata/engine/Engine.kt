@@ -71,6 +71,27 @@ class Engine(
 
     fun vars(): VarStore = varStore
 
+    /**
+     * Leaves a dated "engine started" record in the run log, the way MacroDroid's system log
+     * and Tasker's Monitor Start entry do. After the fact this is what separates "the engine
+     * restarted recently" from "the engine has been dead for days", and it belongs to the
+     * engine rather than to a rule: a rule shows up in the list of automations, and this is
+     * not one the user chose.
+     */
+    fun recordStart(enabledCount: Int) {
+        runLog.record(
+            RunRecord(
+                automationId = ENGINE_ID,
+                name = ENGINE_ID,
+                startedAt = System.currentTimeMillis(),
+                durationMs = 0,
+                source = "start",
+                outcome = RunRecord.OUTCOME_RAN,
+                steps = listOf(StepResult(0, "log", true, "engine started, $enabledCount automation(s) enabled"))
+            )
+        )
+    }
+
     fun shutdown() {
         executor.shutdownNow()
         (actions as? ActionRunner)?.shutdown()
@@ -163,9 +184,11 @@ class Engine(
         return record
     }
 
-    private companion object {
-        const val TAG = "KataEngine"
-        const val RUN_TIMEOUT_SECONDS = 60L
-        const val RETRY_BACKOFF_MS = 400L
+    companion object {
+        /** The automation id the engine's own start records carry; no rule can be called this. */
+        const val ENGINE_ID = "engine"
+        private const val TAG = "KataEngine"
+        private const val RUN_TIMEOUT_SECONDS = 60L
+        private const val RETRY_BACKOFF_MS = 400L
     }
 }

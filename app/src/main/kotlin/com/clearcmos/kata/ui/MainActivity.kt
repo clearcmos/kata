@@ -84,7 +84,9 @@ class MainActivity : AppCompatActivity() {
 
     private fun refresh() {
         val store = Kata.store(this)
-        val automations = store.all()
+        // Alphabetical by name, not store order: the store keeps the order rules were pushed
+        // in, which is a fact about the sync and not something a reader can predict.
+        val automations = store.all().sortedBy { it.name.lowercase() }
         val runLog = Kata.runLog(this)
 
         val running = KataService.isRunning

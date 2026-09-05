@@ -266,7 +266,9 @@ def cmd_list(args):
     last = {}
     for run in runs_body.get("runs", []):
         last.setdefault(run["automation_id"], run)
-    for automation in automations:
+    # Alphabetical by name. The device returns store order, which is push order, and a reader
+    # should not have to know that to find a rule.
+    for automation in sorted(automations, key=lambda a: display_name(a).lower()):
         state = colour("on ", GREEN) if automation.get("enabled", True) else colour("off", DIM)
         trigger = automation["trigger"]
         detail = " ".join(f"{k}={v}" for k, v in trigger.items() if k != "type")
@@ -275,7 +277,14 @@ def cmd_list(args):
         if run:
             colour_code = RED if run["outcome"] == "failed" else DIM
             tail = colour(f"  [{run['outcome']}]", colour_code)
-        print(f"{state}  {automation['id']:<24} {trigger['type']} {detail}{tail}")
+        name = display_name(automation)
+        # Every other command takes the id, so show it whenever the name is not the id.
+        ident = "" if name == automation["id"] else colour(f" ({automation['id']})", DIM)
+        print(f"{state}  {name:<24}{ident} {trigger['type']} {detail}{tail}")
+
+
+def display_name(automation: dict) -> str:
+    return automation.get("name") or automation["id"]
 
 
 def cmd_show(args):

@@ -54,7 +54,7 @@ device.
 ```json
 {
   "id": "low-battery-alert",
-  "name": "Low battery alert",
+  "name": "low-battery-alert",
   "description": "Warn once when the battery falls past the threshold, unless already charging.",
   "enabled": true,
   "trigger": { "type": "battery_level", "below": 20 },
@@ -77,19 +77,23 @@ every run.
 
 Because the phone owns those values, `kata push` carries them across: a sync updates each
 param's label, type, and the default for a newly declared key, but keeps a value you set on the
-device. `kata push --reset-params` overwrites them with the repo's instead.
+device. `kata push --reset-params` overwrites them with the repo's instead. The same goes for
+whether a rule is armed: `enabled` in the file only seeds a rule the phone has not seen before,
+and a sync never re-arms one you switched off on the device.
 
 That also means parameter values, persisted variables, and which rules are armed exist only on
-the phone. `kata pull` writes exactly those to a file so they survive a wipe or a reinstall, and
-`kata restore` puts them back after a `kata push`. Rule bodies are deliberately excluded: two
+the phone. `kata pull` writes exactly those to a file so they survive a wipe, and `kata restore`
+puts them back onto a device that has lost them. Rule bodies are deliberately excluded: two
 sources of truth for the same rules would eventually disagree, and the repo has to win.
+
+`name` is kebab-case and the same as `id`; the CLI and the app both list rules sorted by it.
 
 Conditions are ANDed. Actions run in order and stop at the first failure, because later actions
 generally assume the earlier ones landed.
 
 ## Vocabulary
 
-21 triggers, 12 conditions, 40 actions. `kata schema` prints all of them with their fields and
+21 triggers, 13 conditions, 40 actions. `kata schema` prints all of them with their fields and
 prerequisites. The short version:
 
 - **Triggers**: `manual`, `boot_completed`, `power_connected`, `power_disconnected`,
@@ -98,8 +102,8 @@ prerequisites. The short version:
   `airplane_mode`, `time_of_day`, `interval`, `notification_posted`, `notification_removed`,
   `app_foreground`, `app_background`, `setting_changed`
 - **Conditions**: `time_between`, `day_of_week`, `battery_below`, `battery_above`, `charging`,
-  `screen_on`, `wifi_ssid`, `ip_address`, `wifi_connected`, `dnd_active`, `app_installed`,
-  `app_foreground`
+  `screen_on`, `wifi_ssid`, `ip_address`, `wifi_connected`, `bluetooth_connected`, `dnd_active`,
+  `app_installed`, `app_foreground`
 - **Actions**: `notify`, `cancel_notification`, `dnd`, `ringer_mode`, `volume`, `media`,
   `vibrate`, `torch`, `tts`, `http_request`, `launch_app`, `start_activity`, `broadcast`,
   `clipboard`, `secure_setting`, `global_setting`, `system_setting`, `wake_screen`, `wait`,
@@ -205,10 +209,10 @@ engine. Python 3 standard library only.
 
 ```
 kata push [--reset-params]         replace the device rule set with automations/
-kata pull [--out FILE]             save the device-only state (params, variables)
-kata restore [FILE]                put a pulled state back after a wipe
+kata pull [--out FILE]             save the device-only state (params, variables, armed flags)
+kata restore [FILE]                put a pulled state back onto a device that lost it
 kata validate                      check automations/ against the device, install nothing
-kata list                          what is installed, armed, and how it last ran
+kata list                          what is installed, armed, and how it last ran, by name
 kata show <id>                     one automation as the device holds it
 kata fire <id> [--dry]             run it now
 kata simulate <type> [k=v ...]     inject a fake trigger and see what matches
@@ -224,6 +228,10 @@ kata doctor                        check the whole path from here to the engine
 `push` is all or nothing. If any automation fails validation, nothing is installed and every
 problem is reported, because a partially applied sync leaves the phone matching neither the
 repo nor any intended state.
+
+The engine writes its own dated start record into the run log under the id `engine`, so
+`kata runs --id engine` tells a recent restart from an engine that has been dead for days. That
+is an engine concern rather than a rule, which keeps the automation list to rules you chose.
 
 ## Control API
 

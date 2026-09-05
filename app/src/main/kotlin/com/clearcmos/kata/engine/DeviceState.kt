@@ -2,6 +2,9 @@ package com.clearcmos.kata.engine
 
 import android.Manifest
 import android.app.NotificationManager
+import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
+import android.bluetooth.BluetoothProfile
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -12,6 +15,8 @@ import android.net.wifi.WifiInfo
 import android.os.BatteryManager
 import android.os.PowerManager
 import java.net.Inet4Address
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Point-in-time reads of the device, shared by condition evaluation and /capabilities.
@@ -42,6 +47,17 @@ interface DeviceReadings {
     fun isDndActive(): Boolean
 
     fun isAppInstalled(packageName: String): Boolean
+
+    /** Audio devices connected now; empty when none, null when the app may not ask. */
+    fun connectedBluetoothDevices(): List<BluetoothPeer>?
+}
+
+/** A remote Bluetooth device as a condition sees it. The name is null when the platform withholds it. */
+data class BluetoothPeer(val address: String, val name: String?) {
+    fun matches(wanted: String): Boolean =
+        wanted.equals(address, ignoreCase = true) || wanted.equals(name, ignoreCase = true)
+
+    fun label(): String = if (name == null) address else "$name ($address)"
 }
 
 class DeviceState(private val context: Context) : DeviceReadings {
@@ -124,10 +140,53 @@ class DeviceState(private val context: Context) : DeviceReadings {
         context.packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
     }.isSuccess
 
+    /**
+     * Connected audio devices across the profiles a headset or earbuds use. Empty when the radio
+     * is off, which is a true statement about what is connected. Profile proxies answer
+     * asynchronously on the main thread, so this blocks its caller briefly; it is only ever
+     * asked from the engine thread.
+     */
+    override fun connectedBluetoothDevices(): List<BluetoothPeer>? {
+        if (context.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+            return null
+        }
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return null
+        if (!adapter.isEnabled) return emptyList()
+        val peers = LinkedHashMap<String, BluetoothPeer>()
+        for (profile in AUDIO_PROFILES) {
+            val proxy = profileProxy(adapter, profile) ?: continue
+            try {
+                proxy.connectedDevices.forEach { peers.putIfAbsent(it.address, BluetoothPeer(it.address, it.name)) }
+            } finally {
+                adapter.closeProfileProxy(profile, proxy)
+            }
+        }
+        return peers.values.toList()
+    }
+
+    private fun profileProxy(adapter: BluetoothAdapter, profile: Int): BluetoothProfile? {
+        val ready = CountDownLatch(1)
+        var proxy: BluetoothProfile? = null
+        val listener =
+            object : BluetoothProfile.ServiceListener {
+                override fun onServiceConnected(profile: Int, service: BluetoothProfile) {
+                    proxy = service
+                    ready.countDown()
+                }
+
+                override fun onServiceDisconnected(profile: Int) = Unit
+            }
+        if (!adapter.getProfileProxy(context, listener, profile)) return null
+        return if (ready.await(PROFILE_PROXY_TIMEOUT_MS, TimeUnit.MILLISECONDS)) proxy else null
+    }
+
     fun hasPermission(permission: String): Boolean =
         context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
 
     private companion object {
+        val AUDIO_PROFILES = listOf(BluetoothProfile.A2DP, BluetoothProfile.HEADSET, BluetoothProfile.LE_AUDIO)
+        const val PROFILE_PROXY_TIMEOUT_MS = 2000L
+
         // WifiManager.UNKNOWN_SSID without the dependency on WifiManager itself; the platform
         // substitutes this literal when the caller may not see the real name.
         const val UNKNOWN_SSID = "<unknown ssid>"

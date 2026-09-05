@@ -1,5 +1,6 @@
 package com.clearcmos.kata
 
+import com.clearcmos.kata.engine.BluetoothPeer
 import com.clearcmos.kata.engine.ConditionEvaluator
 import com.clearcmos.kata.engine.DeviceReadings
 import com.clearcmos.kata.model.Args
@@ -17,7 +18,8 @@ private class FakeDevice(
     private val ssid: String? = "home",
     private val ip: String? = "192.0.2.13",
     private val dnd: Boolean = false,
-    private val installed: Set<String> = setOf("com.example")
+    private val installed: Set<String> = setOf("com.example"),
+    private val bluetooth: List<BluetoothPeer>? = emptyList()
 ) : DeviceReadings {
     override fun batteryLevel() = battery
 
@@ -34,6 +36,8 @@ private class FakeDevice(
     override fun isDndActive() = dnd
 
     override fun isAppInstalled(packageName: String) = packageName in installed
+
+    override fun connectedBluetoothDevices() = bluetooth
 }
 
 class ConditionEvaluatorTest {
@@ -103,6 +107,37 @@ class ConditionEvaluatorTest {
     fun `app_installed reflects the package list`() {
         assertTrue(evaluate(FakeDevice(), "app_installed", mapOf("package" to "com.example")).matched)
         assertFalse(evaluate(FakeDevice(), "app_installed", mapOf("package" to "com.absent")).matched)
+    }
+
+    @Test
+    fun `bluetooth_connected without a device asks whether anything is on`() {
+        val buds = FakeDevice(bluetooth = listOf(BluetoothPeer("00:11:22:33:44:55", "Buds")))
+        assertTrue(
+            evaluate(FakeDevice(bluetooth = emptyList()), "bluetooth_connected", mapOf("value" to false)).matched
+        )
+        assertFalse(evaluate(buds, "bluetooth_connected", mapOf("value" to false)).matched)
+        assertTrue(evaluate(buds, "bluetooth_connected", mapOf("value" to true)).matched)
+    }
+
+    @Test
+    fun `bluetooth_connected scoped to a device matches by name or address, case-insensitively`() {
+        val buds = FakeDevice(bluetooth = listOf(BluetoothPeer("00:11:22:33:44:55", "Buds")))
+        assertTrue(evaluate(buds, "bluetooth_connected", mapOf("value" to true, "device" to "buds")).matched)
+        assertTrue(
+            evaluate(buds, "bluetooth_connected", mapOf("value" to true, "device" to "00:11:22:33:44:55")).matched
+        )
+        // Another device being connected says nothing about the one asked for.
+        assertTrue(evaluate(buds, "bluetooth_connected", mapOf("value" to false, "device" to "Headphones")).matched)
+    }
+
+    @Test
+    fun `an unreadable bluetooth state satisfies neither polarity`() {
+        // Without the grant the phone might be wearing anything, and a rule that takes an
+        // audio device on a guess would interrupt whatever is playing.
+        val result = evaluate(FakeDevice(bluetooth = null), "bluetooth_connected", mapOf("value" to false))
+        assertFalse(result.matched)
+        assertTrue(result.detail, result.detail.contains("nearby devices"))
+        assertFalse(evaluate(FakeDevice(bluetooth = null), "bluetooth_connected", mapOf("value" to true)).matched)
     }
 
     @Test

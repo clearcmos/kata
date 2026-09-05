@@ -83,6 +83,21 @@ class ConditionEvaluator(private val device: DeviceReadings) {
                 ConditionResult(actual == want, "wifi_connected=$actual, want $want")
             }
 
+            "bluetooth_connected" -> {
+                val want = args.bool("value")
+                val peers =
+                    device.connectedBluetoothDevices()
+                        ?: return ConditionResult(false, "bluetooth unreadable; allow nearby devices to match on it")
+                val wanted = args.optString("device")
+                val considered = if (wanted == null) peers else peers.filter { it.matches(wanted) }
+                val listed = if (peers.isEmpty()) "none" else peers.joinToString(", ") { it.label() }
+                val scope = if (wanted == null) "" else " matching $wanted"
+                ConditionResult(
+                    considered.isNotEmpty() == want,
+                    "bluetooth connected: $listed; want ${if (want) "some" else "none"}$scope"
+                )
+            }
+
             "dnd_active" -> {
                 val want = args.bool("value")
                 val actual = device.isDndActive()

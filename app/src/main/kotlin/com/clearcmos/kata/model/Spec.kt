@@ -297,6 +297,19 @@ object Vocabulary {
                 listOf(bool("value", "true to require a Wi-Fi connection."))
             ),
             TypeSpec(
+                "bluetooth_connected",
+                SpecKind.CONDITION,
+                "A Bluetooth audio device is connected right now, on the A2DP, headset, or LE audio " +
+                    "profile. Omit device to ask about any; give a name or MAC address to ask about " +
+                    "one. value=false with no device is how a rule checks the phone is not already " +
+                    "wearing something before it takes an audio device.",
+                listOf(
+                    bool("value", "true to require a connected device, false to require none."),
+                    str("device", "Device name or MAC address to restrict the check to.", required = false)
+                ),
+                listOf(Requirement.BLUETOOTH)
+            ),
+            TypeSpec(
                 "dnd_active",
                 SpecKind.CONDITION,
                 "Do Not Disturb state matches.",

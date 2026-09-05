@@ -1,6 +1,6 @@
 {
   "id": "wireless-debug-reconnect",
-  "name": "Reconnect adb when wireless debugging comes on",
+  "name": "wireless-debug-reconnect",
   "description": "When a Quick Settings tile turns wireless debugging on, ask the workstation to run its adb reconnect script. Set the host, user, and command parameters on the phone, or with kata param, so this file carries no machine-specific values. Fails quietly if the workstation is off.",
   "enabled": true,
   "trigger": {

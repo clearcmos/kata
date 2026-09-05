@@ -73,8 +73,11 @@ reconnect script and a wireless-debugging Quick Settings tile in place, re-armin
 reboot is one command, so it stays a live option.
 
 Genuinely out of reach under this ceiling: toggling Wi-Fi or mobile data through an API
-(removed for third-party callers in Android 10) and force-stopping another app. Say so in one
-line and stop there.
+(removed for third-party callers in Android 10), force-stopping another app, and connecting or
+disconnecting one Bluetooth audio device (`BluetoothDevice.connect()` is behind
+`BLUETOOTH_PRIVILEGED`). Say so in one line and stop there. Reading which audio devices are
+connected is public API and is what the `bluetooth_connected` condition does; the connect itself
+runs on the workstation at adb shell privilege, asked for over `ssh`.
 
 ## Extending the vocabulary
 
@@ -271,6 +274,9 @@ launching it would have started the service by hand and proved nothing. All of i
 23:12:40 KataEngine: boot_completed matched 1 automation(s)
 ```
 
+The matched automation was the `engine-heartbeat` rule that has since been removed; the engine
+now writes its own start record instead, so a boot matching nothing is normal.
+
 The rescheduled alarm was confirmed in `dumpsys alarm` rather than inferred from the log line:
 
 ```
@@ -288,10 +294,12 @@ Two things worth knowing:
   note above. A reconnect script then finds the new random
   port and re-arming 5555. Budget for that before rebooting a device you are driving remotely.
 
-The `engine-heartbeat` automation exists to leave a dated record of this in the run log. The
-main failure mode of a background automation engine is dying quietly, and a `boot_completed`
-rule is the cheapest way to tell "the engine restarted" from "the engine has been dead for two
-days".
+The engine leaves a dated record of every start in the run log itself, under the id `engine`
+(`kata runs --id engine`). The main failure mode of a background automation engine is dying
+quietly, and that record is what tells "the engine restarted" from "the engine has been dead
+for two days". It used to be a `boot_completed` rule called `engine-heartbeat`; it became an
+engine concern so that the automation list shows only rules the user chose, which is also how
+MacroDroid's system log and Tasker's Monitor Start entry handle it.
 
 ### The accessibility service is unbound and rebound at will
 
@@ -366,8 +374,8 @@ is an authoring trap and the doc strings are what an authoring agent reads.
 ### Registering the network callback replays the current network
 
 `registerNetworkCallback` delivers `onCapabilitiesChanged` for a matching network that is
-already connected, so `wifi_connected` fires within a millisecond of `TriggerRegistry.refresh()`
-as well as on a real join:
+already connected, so `wifi_connected` fires within a millisecond of the first
+`TriggerRegistry.refresh()` after the engine starts, as well as on a real join:
 
 ```
 00:40:55.189 KataTriggers: refreshing registrations for [..., wifi_connected, ...]
@@ -378,6 +386,11 @@ That is what covers a device joining Wi-Fi before the engine is up, which is the
 after a reboot, and it is the only reason a Wi-Fi rule survives one. The replayed event carries
 no SSID, and `announcedWifi` is set on that first callback so a later one that might carry the
 name is suppressed. A rule that has to work on this path cannot filter on ssid.
+
+The same field is why a later refresh does not fire the rules again: a `kata push` rebuilds the
+callback, the platform replays the same network into it, and the replay is dropped as already
+announced. Verified by pushing an unchanged rule set and reading the run log. Only an engine
+start replays, which means a reboot, a reinstall, or the app being force-stopped and reopened.
 
 ### A wifi_connected rule runs before Wi-Fi is the default route
 
@@ -406,6 +419,20 @@ write it was gating. Hence the leading `wait` and the `retry` on that step.
 What makes this class of bug expensive is that every cheap test passes. Firing the rule by hand
 works, and so does the engine-start replay, because both run long after the switchover. Only a
 real join has the window, and on this device exercising a real join costs the adb session.
+
+### A rule cannot wait for a sibling matched by the same event
+
+`q30-connect-on-home` needs adb to the phone, and adb at home is brought up by
+`wireless-debug-home`. Both match `wifi_connected`, and the engine runs matched rules one at a
+time in store order, so whichever is queued second does not start until the first finishes. A
+step in the Q30 rule that blocked until adb answered would therefore have held up the rule
+that turns adb on, and the only reason it would not have been a deadlock is the timeout.
+
+The rule hands the work off instead: its `ssh` step asks the workstation to queue the job as a
+detached user unit and returns at once, and the unit does the waiting. The cost is that the
+outcome lives in the workstation's journal rather than the run record, which the rule's
+description says. The general form: an action that depends on the effect of another rule fired
+by the same event must not block on it.
 
 ### Wireless debugging is scoped to one AP, and the platform closes it
 
@@ -532,8 +559,12 @@ reason, with a `Context` convenience constructor that assembles the real ones.
 ### Device-only state
 
 Parameter values, persisted variables, and the armed/disarmed flag live only on the phone; the
-repo cannot rebuild them. `kata pull` captures those three things and nothing else, and
-`kata restore` reapplies them after a `kata push`.
+repo cannot rebuild them. A `kata push` carries the flag and the parameter values over from the
+installed copy of each rule, so syncing the repo neither re-arms a rule disarmed on the phone
+nor overwrites a value typed there; the file's `enabled` only seeds a rule the phone has not
+seen before. `kata pull` captures all three things and nothing else, and `kata restore` puts a
+pulled state back onto a device that has lost it: a wiped app, a `--reset-params` push, or a
+new phone.
 
 The pulled file carries no timestamp, so a pull that changes nothing produces no diff and real
 changes stay visible in the destination repo's history. Rule bodies are excluded on purpose: a
@@ -565,6 +596,17 @@ street address.
 - **2026-08-31, real org.json in tests**: `android.jar` ships stubs that return null under
   `isReturnDefaultValues`, so every persistence test silently passed while writing nothing.
   `testImplementation(libs.json)` shadows the stub.
+- **2026-09-04, rule names**: `name` is kebab-case and equal to `id`, concise but descriptive
+  (`q30-connect-on-home`, not `Connect Q30`). The CLI list and the app list both sort by name,
+  so the name is what a reader scans. Existing ids were not renamed: parameter values on the
+  phone are keyed by id and a rename would orphan them.
+- **2026-09-04, the list holds only rules the user chose**: no diagnostic or infrastructure
+  rules. The engine records its own start in the run log under the id `engine`; anything else
+  of that kind belongs in the engine too, not in `automations/`.
+- **2026-09-04, a push carries the armed flag**: `enabled` in a file only seeds a rule the phone
+  has not seen. Before this a sync re-armed every rule disarmed on the device, and the fix was
+  the same one-line merge params already had, not a per-rule checksum: rewriting an unchanged
+  body is harmless, so there was nothing to skip.
 
 ## Dependency updates
 
@@ -639,5 +681,7 @@ cli/kata fire nightly-dnd --dry
 cli/kata runs --limit 5
 ```
 
-Unit tests cover the pure logic only: `Validator`, `Clock`, and `TriggerMatcher`. Anything
-touching an Android API is verified on the device through the CLI.
+Unit tests cover the pure logic only: `Validator`, `Clock`, `TriggerMatcher`, `ConditionEvaluator`
+against a fake device, `Engine` sequencing against a stub executor, `ControlApi` routing, and
+the device-state carry-over on a sync. Anything touching an Android API is verified on the
+device through the CLI.

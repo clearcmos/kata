@@ -82,10 +82,22 @@ data class Automation(
      * type, and the default for a brand new key) but must not overwrite a value someone set on
      * the phone, or every push would silently undo their edits.
      */
-    fun carryParamValues(previous: Automation?): Automation {
-        if (previous == null || params.isEmpty()) return this
-        val existing = previous.params.associate { it.key to it.value }
-        return copy(params = params.map { param -> existing[param.key]?.let { param.copy(value = it) } ?: param })
+    /**
+     * Takes over what belongs to the phone from the copy already installed: the armed flag, and
+     * parameter values unless [keepParams] is false. A sync from the repo must not re-arm a rule
+     * someone disarmed on the device, any more than it should overwrite a host they typed in.
+     * The file's own `enabled` only seeds a rule the phone has not seen before.
+     */
+    fun carryDeviceState(previous: Automation?, keepParams: Boolean = true): Automation {
+        if (previous == null) return this
+        val carried =
+            if (!keepParams || params.isEmpty()) {
+                params
+            } else {
+                val existing = previous.params.associate { it.key to it.value }
+                params.map { param -> existing[param.key]?.let { param.copy(value = it) } ?: param }
+            }
+        return copy(enabled = previous.enabled, params = carried)
     }
 
     companion object {

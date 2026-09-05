@@ -3,6 +3,7 @@ package com.clearcmos.kata
 import com.clearcmos.kata.actions.ActionError
 import com.clearcmos.kata.actions.ActionExecutor
 import com.clearcmos.kata.actions.ActionOutcome
+import com.clearcmos.kata.engine.BluetoothPeer
 import com.clearcmos.kata.engine.ConditionEvaluator
 import com.clearcmos.kata.engine.DeviceReadings
 import com.clearcmos.kata.engine.Engine
@@ -39,6 +40,8 @@ private class StubDevice(private val charging: Boolean = false) : DeviceReadings
     override fun isDndActive() = false
 
     override fun isAppInstalled(packageName: String) = true
+
+    override fun connectedBluetoothDevices() = emptyList<BluetoothPeer>()
 }
 
 /** Records what it was asked to do and answers however the test dictates. */
@@ -228,6 +231,15 @@ class EngineTest {
         val engine = build(behaviour = { _, _ -> throw ActionError("down") })
         engine.fireNow(rule(steps = listOf(Step("ping", Args(mapOf("host" to "h"))))), "test", dryRun = false)
         assertEquals(1, actions.calls.size)
+    }
+
+    @Test
+    fun `an engine start is recorded without any rule`() {
+        build().recordStart(3)
+        val record = RunLog(temp.root).recent().single()
+        assertEquals(Engine.ENGINE_ID, record.automationId)
+        assertEquals("start", record.source)
+        assertTrue(record.steps.single().detail, record.steps.single().detail.contains("3 automation(s)"))
     }
 
     @Test

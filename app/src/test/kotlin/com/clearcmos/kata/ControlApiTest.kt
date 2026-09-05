@@ -5,6 +5,7 @@ import com.clearcmos.kata.actions.ActionOutcome
 import com.clearcmos.kata.api.CapabilityReporter
 import com.clearcmos.kata.api.ControlApi
 import com.clearcmos.kata.api.HttpRequest
+import com.clearcmos.kata.engine.BluetoothPeer
 import com.clearcmos.kata.engine.ConditionEvaluator
 import com.clearcmos.kata.engine.DeviceReadings
 import com.clearcmos.kata.engine.Engine
@@ -42,6 +43,8 @@ private class AllOffDevice : DeviceReadings {
     override fun isDndActive() = false
 
     override fun isAppInstalled(packageName: String) = true
+
+    override fun connectedBluetoothDevices() = emptyList<BluetoothPeer>()
 }
 
 private class StubCapabilities(private val unmet: List<Requirement> = emptyList()) : CapabilityReporter {
@@ -200,6 +203,17 @@ class ControlApiTest {
         call("POST", "/automations/p/params", """{"key":"host","value":"phone-value"}""")
         call("PUT", "/automations", """{"automations":[$withParam]}""")
         assertEquals("phone-value", engine.store.find("p")!!.params.single().value)
+    }
+
+    @Test
+    fun `a sync keeps a rule that was disarmed on the phone disarmed`() {
+        call("PUT", "/automations", """{"automations":[$simpleRule]}""")
+        call("POST", "/automations/a/disable")
+        call("PUT", "/automations", """{"automations":[$simpleRule]}""")
+        assertFalse(engine.store.find("a")!!.enabled)
+        // Same for a single-rule install, and reset_params is about parameters only.
+        call("POST", "/automations", simpleRule, query = mapOf("reset_params" to "true"))
+        assertFalse(engine.store.find("a")!!.enabled)
     }
 
     @Test

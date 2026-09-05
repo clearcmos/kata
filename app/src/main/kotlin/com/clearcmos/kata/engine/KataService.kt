@@ -50,6 +50,7 @@ class KataService : Service() {
         // rather than at the next reboot.
         store.onChange { registry.refresh() }
         registry.refresh()
+        engine.recordStart(store.enabled().size)
         updateNotification()
         Log.i(TAG, "engine up: ${store.enabled().size} enabled, token at ${externalTokenPath()}")
     }

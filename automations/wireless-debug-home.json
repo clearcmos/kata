@@ -1,6 +1,6 @@
 {
   "id": "wireless-debug-home",
-  "name": "Turn wireless debugging on at home",
+  "name": "wireless-debug-home",
   "description": "Switch wireless debugging on when the phone joins the home network, so adb is reachable from the workstation without a tap on the device. Home is proved in two steps because the SSID is not readable from the engine on this device: the DHCP lease has to match, and then an SSH connection has to succeed with kata's key, which no other network can fake. The wait and the retries are not padding: the rule runs the instant Wi-Fi appears, while mobile data is still the default route, so a LAN address is briefly unreachable. The check also runs before the setting is written, so its command has to be one that answers immediately rather than one that tries to reach a phone whose adb port is still closed. A failed check stops the run before anything is written. Turning the setting on is what fires wireless-debug-reconnect, so the workstation reconnects on its own.",
   "enabled": true,
   "trigger": {

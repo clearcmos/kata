@@ -192,11 +192,7 @@ class ControlApi(
         }
 
         val resetParams = request.query["reset_params"] == "true"
-        val installed = if (resetParams) {
-            parsed
-        } else {
-            parsed.map { it.carryParamValues(store.find(it.id)) }
-        }
+        val installed = parsed.map { it.carryDeviceState(store.find(it.id), keepParams = !resetParams) }
         store.replaceAll(installed)
         return ok(
             mapOf(
@@ -216,11 +212,8 @@ class ControlApi(
                 Json.toJson(mapOf("error" to "validation failed", "problems" to errors)).toString()
             )
         }
-        val installed = if (request.query["reset_params"] == "true") {
-            automation
-        } else {
-            automation.carryParamValues(store.find(automation.id))
-        }
+        val installed =
+            automation.carryDeviceState(store.find(automation.id), keepParams = request.query["reset_params"] != "true")
         store.upsert(installed)
         return ok(mapOf("installed" to installed.id, "unmet" to unmetFor(installed)))
     }

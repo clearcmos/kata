@@ -1,6 +1,6 @@
 {
   "id": "photosync-on-home",
-  "name": "Open PhotoSync on arriving home",
+  "name": "photosync-on-home",
   "description": "PhotoSync 4.3.4 cancels its scheduled autotransfer check and disables its boot receiver when it comes to the foreground and re-enqueues both a few seconds later. If the process is killed inside that window, typically by swiping the app from Recents right after opening it, autotransfer stays disarmed until the app is next opened and survives the window, and a reboot does not restore it because the boot receiver is disabled too. Opening the app on arrival re-arms the schedule and runs an immediate scan, so this rule is the recovery for that state. It is a stopgap, not the design: if PhotoSync is never swiped away seconds after opening, its own 15-minute check works and this rule can stay disarmed. The lease check keeps it to the home LAN, and the wait lets the default route move off mobile data first. Needs the appear-on-top grant; kata reports it as unmet otherwise.",
   "enabled": true,
   "trigger": {
