@@ -1,0 +1,55 @@
+{
+  "id": "mirror-tray-plugged",
+  "name": "mirror-tray-plugged",
+  "description": "Show the workstation's phone-mirror tray icon while the phone charges at home. Home is proved by the DHCP lease, and the ssh step can only reach the workstation from the LAN. The workstation's forced command maps the verb to starting its tray unit, and is idempotent, so a retry after a lost reply is harmless. Plugging in away from home skips on the ip condition. The engine does not announce a charger that was already in when it started, so the icon appears on the next plug-in after a phone reboot.",
+  "enabled": true,
+  "trigger": {
+    "type": "power_connected"
+  },
+  "conditions": [
+    {
+      "type": "ip_address",
+      "equals": "${params.ip}"
+    }
+  ],
+  "actions": [
+    {
+      "type": "ssh",
+      "host": "${params.host}",
+      "user": "${params.user}",
+      "command": "${params.command}",
+      "timeout_ms": 6000,
+      "retry": 3
+    },
+    {
+      "type": "log",
+      "message": "asked ${params.host} to show the mirror tray icon"
+    }
+  ],
+  "params": [
+    {
+      "key": "ip",
+      "label": "Expected IPv4 address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "host",
+      "label": "Workstation address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "user",
+      "label": "Login name",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "command",
+      "label": "Workstation verb that shows the icon",
+      "type": "string",
+      "value": "plugged"
+    }
+  ]
+}

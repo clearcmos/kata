@@ -1,0 +1,55 @@
+{
+  "id": "mirror-tray-unplugged",
+  "name": "mirror-tray-unplugged",
+  "description": "Remove the workstation's phone-mirror tray icon when the phone comes off its charger at home. The counterpart of mirror-tray-plugged, with the same ip condition and the same idempotent forced-command verb, so a retry is harmless. An open mirror window stays up: the workstation only stops the icon.",
+  "enabled": true,
+  "trigger": {
+    "type": "power_disconnected"
+  },
+  "conditions": [
+    {
+      "type": "ip_address",
+      "equals": "${params.ip}"
+    }
+  ],
+  "actions": [
+    {
+      "type": "ssh",
+      "host": "${params.host}",
+      "user": "${params.user}",
+      "command": "${params.command}",
+      "timeout_ms": 6000,
+      "retry": 3
+    },
+    {
+      "type": "log",
+      "message": "asked ${params.host} to remove the mirror tray icon"
+    }
+  ],
+  "params": [
+    {
+      "key": "ip",
+      "label": "Expected IPv4 address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "host",
+      "label": "Workstation address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "user",
+      "label": "Login name",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "command",
+      "label": "Workstation verb that removes the icon",
+      "type": "string",
+      "value": "unplugged"
+    }
+  ]
+}
