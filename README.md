@@ -261,8 +261,27 @@ apps cannot.
 
 ## Setup
 
+There is no prebuilt APK, so build it first. With Nix, the flake pins the whole toolchain:
+
 ```
 nix develop --command gradle assembleDebug
+```
+
+Nix is optional. CI builds the same APK on a stock Ubuntu runner with no Nix, so any machine
+with the same pieces can too. The repo has no Gradle wrapper, so install these yourself:
+
+- JDK 17
+- Gradle 8.14.4 (the version CI uses)
+- The Android SDK with platform 36 and build-tools 35.0.0, found through `ANDROID_HOME` or a
+  `sdk.dir` line in `local.properties`
+
+```
+gradle assembleDebug
+```
+
+Then install it and grant the permissions:
+
+```
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 adb shell pm grant com.clearcmos.kata android.permission.WRITE_SECURE_SETTINGS
 adb shell pm grant com.clearcmos.kata android.permission.POST_NOTIFICATIONS
