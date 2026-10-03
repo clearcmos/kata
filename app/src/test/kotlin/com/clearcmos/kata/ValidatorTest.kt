@@ -51,6 +51,17 @@ class ValidatorTest {
     }
 
     @Test
+    fun `ssh accepts a network and refuses one it does not know`() {
+        fun ssh(network: String) = Step(
+            "ssh",
+            Args(mapOf("host" to "h", "user" to "u", "command" to "check", "network" to network))
+        )
+        assertEquals(emptyList<String>(), Validator.validate(automation(actions = listOf(ssh("wifi")))))
+        val errors = Validator.validate(automation(actions = listOf(ssh("cellular"))))
+        assertTrue(errors.toString(), errors.any { it.contains("must be one of default, wifi") })
+    }
+
+    @Test
     fun `an enum outside its allowed set names the allowed values`() {
         val errors =
             Validator.validate(

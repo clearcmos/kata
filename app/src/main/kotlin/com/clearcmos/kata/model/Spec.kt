@@ -504,7 +504,18 @@ object Vocabulary {
                     str("user", "Login name."),
                     str("command", "Command to run. Runs without a login shell, so use absolute paths."),
                     int("port", "SSH port.", required = false, default = 22),
-                    int("timeout_ms", "Connect and run timeout.", required = false, default = 8000)
+                    int("timeout_ms", "Connect and run timeout.", required = false, default = 8000),
+                    enum(
+                        "network",
+                        "Which network carries the connection. default follows the system's default " +
+                            "route. wifi sends the connection, and the host lookup, over the Wi-Fi " +
+                            "network even while mobile data is the default, which is true for the " +
+                            "first few seconds after a join, so a local-network host is reachable " +
+                            "straight away. The action fails with a message when there is no Wi-Fi.",
+                        listOf("default", "wifi"),
+                        required = false,
+                        default = "default"
+                    )
                 )
             ),
             TypeSpec(

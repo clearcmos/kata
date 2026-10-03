@@ -10,6 +10,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.wifi.WifiInfo
 import android.os.BatteryManager
@@ -116,12 +117,7 @@ class DeviceState(private val context: Context) : DeviceReadings {
      */
     override fun ipAddress(): String? {
         val manager = context.getSystemService(ConnectivityManager::class.java) ?: return null
-        val wifi =
-            manager.allNetworks.firstOrNull { network ->
-                val capabilities = manager.getNetworkCapabilities(network) ?: return@firstOrNull false
-                capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
-                    !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-            } ?: return null
+        val wifi = manager.wifiNetwork() ?: return null
         return manager
             .getLinkProperties(wifi)
             ?.linkAddresses
@@ -191,4 +187,17 @@ class DeviceState(private val context: Context) : DeviceReadings {
         // substitutes this literal when the caller may not see the real name.
         const val UNKNOWN_SSID = "<unknown ssid>"
     }
+}
+
+/**
+ * The Wi-Fi network itself, never the active one, or null when there is none.
+ *
+ * The two differ for the first moments of a join, when mobile data is still the default route,
+ * and anything that must act on the local network has to ask for this one. A VPN is skipped
+ * because it reports the transports of the network beneath it and would match a Wi-Fi test.
+ */
+internal fun ConnectivityManager.wifiNetwork(): Network? = allNetworks.firstOrNull { network ->
+    val capabilities = getNetworkCapabilities(network) ?: return@firstOrNull false
+    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) &&
+        !capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
 }

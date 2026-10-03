@@ -13,6 +13,7 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.media.AudioManager
 import android.media.RingtoneManager
+import android.net.ConnectivityManager
 import android.os.PowerManager
 import android.os.VibrationEffect
 import android.os.VibratorManager
@@ -26,6 +27,7 @@ import com.clearcmos.kata.engine.DeviceState
 import com.clearcmos.kata.engine.Notifications
 import com.clearcmos.kata.engine.Store
 import com.clearcmos.kata.engine.VarStore
+import com.clearcmos.kata.engine.wifiNetwork
 import com.clearcmos.kata.model.Step
 import com.clearcmos.kata.triggers.KataAccessibilityService
 import java.io.File
@@ -410,12 +412,19 @@ class ActionRunner(
         val args = step.args
         val host = args.string("host")
         val user = args.string("user")
+        val network = when (args.optString("network")) {
+            "wifi" ->
+                context.getSystemService(ConnectivityManager::class.java)?.wifiNetwork()
+                    ?: throw ActionError("network is wifi, but the device has no Wi-Fi network right now")
+            else -> null
+        }
         val result = ssh.run(
             host = host,
             user = user,
             port = args.int("port", 22),
             command = args.string("command"),
-            timeoutMs = args.int("timeout_ms", 8000)
+            timeoutMs = args.int("timeout_ms", 8000),
+            network = network
         )
         val output = result.output.replace('\n', ' ').take(SSH_OUTPUT_PREVIEW)
         if (result.exitStatus != 0) {

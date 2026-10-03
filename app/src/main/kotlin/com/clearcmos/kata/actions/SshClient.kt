@@ -1,13 +1,20 @@
 package com.clearcmos.kata.actions
 
 import android.content.Context
+import android.net.Network
 import android.util.Log
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.JSchException
 import com.jcraft.jsch.KeyPair
+import com.jcraft.jsch.SocketFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
+import java.net.InetSocketAddress
+import java.net.Socket
 
 /** What an SSH command did. [exitStatus] is -1 when the channel closed without reporting one. */
 data class SshResult(val exitStatus: Int, val output: String)
@@ -55,7 +62,19 @@ class SshClient(private val context: Context) {
         }.onFailure { Log.w(TAG, "could not mirror public key", it) }
     }
 
-    fun run(host: String, user: String, port: Int, command: String, timeoutMs: Int): SshResult {
+    /**
+     * [network] pins the connection, and the host lookup, to one network. Without it the socket
+     * follows the default route, which is mobile data for the first moments of a Wi-Fi join and
+     * indefinitely on a Wi-Fi that never validates.
+     */
+    fun run(
+        host: String,
+        user: String,
+        port: Int,
+        command: String,
+        timeoutMs: Int,
+        network: Network? = null
+    ): SshResult {
         ensureKey()
         if (!knownHosts.exists()) {
             sshDir.mkdirs()
@@ -71,6 +90,7 @@ class SshClient(private val context: Context) {
         // change is refused. Prompting is not an option with no user present.
         session.setConfig("StrictHostKeyChecking", "accept-new")
         session.setConfig("PreferredAuthentications", "publickey")
+        if (network != null) session.setSocketFactory(NetworkSocketFactory(network, timeoutMs))
 
         try {
             session.connect(timeoutMs)
@@ -123,6 +143,28 @@ class SshClient(private val context: Context) {
                 "could not reach $user@$host:$port ($detail). The machine is probably off or not " +
                     "on this network."
         }
+    }
+
+    /**
+     * Connects through one specific network. jsch hands the socket's connect timeout to its own
+     * helper only when it makes the socket itself, so a custom factory has to honour it here.
+     */
+    private class NetworkSocketFactory(private val network: Network, private val timeoutMs: Int) : SocketFactory {
+        override fun createSocket(host: String, port: Int): Socket {
+            val socket = Socket()
+            try {
+                network.bindSocket(socket)
+                socket.connect(InetSocketAddress(network.getByName(host), port), timeoutMs)
+            } catch (e: IOException) {
+                socket.close()
+                throw e
+            }
+            return socket
+        }
+
+        override fun getInputStream(socket: Socket): InputStream = socket.getInputStream()
+
+        override fun getOutputStream(socket: Socket): OutputStream = socket.getOutputStream()
     }
 
     private companion object {
