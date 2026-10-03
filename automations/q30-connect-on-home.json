@@ -1,7 +1,7 @@
 {
   "id": "q30-connect-on-home",
   "name": "q30-connect-on-home",
-  "description": "Bring the Q30 headphones to the phone on arriving home, when nothing else has the phone's audio and the workstation is not using them. Home is proved the way wireless-debug-home proves it: the DHCP lease has to match, and the SSH connection with kata's key has to succeed. The phone's own check is the bluetooth_connected condition, which stands the rule down when any audio device is already connected, the Q30 included. Everything after that runs on the workstation, because an app cannot connect one Bluetooth audio device (the call is behind BLUETOOTH_PRIVILEGED, which the adb shell holds and no installable app can) and only the workstation can see whether the headphones are on it. The ssh command queues that work and returns at once rather than waiting for a result: adb to the phone is not up yet when this fires, wireless-debug-home is what brings it up, and that rule may be queued behind this one on the engine's single thread, so a step that waited here would hold up the very rule it depends on. The workstation waits for adb, checks its own Bluetooth, re-checks the phone's, then asks the headphones to connect and gives up quietly if they are off. The outcome lands in the workstation's journal under s25-bt, not in this run record. Depends on wireless-debug-home being armed, and like every wifi_connected rule it also fires when the engine starts while already on Wi-Fi.",
+  "description": "Bring the Q30 headphones to the phone on arriving home, when nothing else has the phone's audio and the workstation is not using them. Home is proved the way wireless-debug-home proves it: the DHCP lease has to match, and the SSH connection with kata's key has to succeed. That connection goes over the Wi-Fi network itself, so it does not depend on Wi-Fi having become the default route. The phone's own check is the bluetooth_connected condition, which stands the rule down when any audio device is already connected, the Q30 included. Everything after that runs on the workstation, because an app cannot connect one Bluetooth audio device (the call is behind BLUETOOTH_PRIVILEGED, which the adb shell holds and no installable app can) and only the workstation can see whether the headphones are on it. The ssh command queues that work and returns at once rather than waiting for a result: adb to the phone is not up yet when this fires, wireless-debug-home is what brings it up, and that rule may be queued behind this one on the engine's single thread, so a step that waited here would hold up the very rule it depends on. The workstation waits for adb, checks its own Bluetooth, re-checks the phone's, then asks the headphones to connect and gives up quietly if they are off. The outcome lands in the workstation's journal under s25-bt, not in this run record. Depends on wireless-debug-home being armed, and like every wifi_connected rule it also fires when the engine starts while already on Wi-Fi.",
   "enabled": true,
   "trigger": {
     "type": "wifi_connected"
@@ -27,7 +27,8 @@
       "user": "${params.user}",
       "command": "${params.command} ${params.mac}",
       "timeout_ms": 6000,
-      "retry": 3
+      "retry": 3,
+      "network": "wifi"
     },
     {
       "type": "log",

@@ -134,9 +134,10 @@ object Vocabulary {
                     "engine starts while already connected, which is what lets a rule react to a " +
                     "network the device joined before the engine was up. On a real join this fires " +
                     "before Wi-Fi becomes the default route, and mobile data stays the default for " +
-                    "the first few seconds, so an action that reaches a local-network address (ssh, " +
-                    "for one) can fail with no route. Start such a rule with a wait and retry the " +
-                    "step if it is idempotent.",
+                    "the first few seconds, and indefinitely on a Wi-Fi with no internet, so an action " +
+                    "that reaches a local-network address can fail with no route. For ssh set " +
+                    "network to wifi. For anything else, start with a wait and retry the step if it " +
+                    "is idempotent.",
                 listOf(
                     str(
                         "ssid",

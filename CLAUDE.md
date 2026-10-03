@@ -422,6 +422,34 @@ What makes this class of bug expensive is that every cheap test passes. Firing t
 works, and so does the engine-start replay, because both run long after the switchover. Only a
 real join has the window, and on this device exercising a real join costs the adb session.
 
+### An ssh action can go over the Wi-Fi network
+
+`network: wifi` on an `ssh` step binds its socket, and the host lookup, to the Wi-Fi network
+(`Network.bindSocket` and `Network.getByName`, through a jsch socket factory), so it does not
+follow the default route. Measured on the S25 (Android 16, SDK 36) on 2026-10-03:
+
+- **The window varies.** On two real joins, validation finished 0.36 s and 1.3 s after the
+  network was created, and `wifi_connected` arrived 142 ms and 1112 ms after creation. A
+  default-route ssh started at +1112 ms timed out at its 1.5 s limit although the default flipped
+  to Wi-Fi around +1.4 s, so a connect begun inside the window does not recover. A bound ssh
+  started at +142 ms connected.
+- **A Wi-Fi that never validates never becomes the default.** Validation was made to fail by
+  pointing `captive_portal_http_url`, `captive_portal_https_url`, `captive_portal_fallback_url`
+  and `captive_portal_other_fallback_urls` (Settings.Global, all unset beforehand) at an
+  unreachable documentation address, then rejoining. The Wi-Fi stayed unvalidated, its probes
+  still failing 46 s in, and mobile data stayed the default. With that state held, a default-route
+  ssh timed out and a bound one connected in 152 ms. `wireless-debug-home` with the bound step
+  turned adb back on by itself. Restore with `settings delete global <key>` for each, then rejoin
+  so the network re-evaluates.
+
+Not exercised: a host given by name rather than an IP literal, so the lookup through the Wi-Fi is
+untested, and the q30-connect-on-home path, whose condition stood the rule down during the test.
+
+To place an attempt on a join's timeline, take the Wi-Fi network's `created=` from
+`dumpsys connectivity`, its validation probe times from the "Validation logs" section of
+`dumpsys network_stack` (printed in local time), and each run's `started_at` from `/runs`. Those
+dumps hold SSIDs and addresses, so keep them out of the repo.
+
 ### A rule cannot wait for a sibling matched by the same event
 
 `q30-connect-on-home` needs adb to the phone, and adb at home is brought up by

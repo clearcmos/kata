@@ -190,6 +190,12 @@ restrict,command="/usr/local/bin/adb-reconnect" ecdsa-sha2-nistp256 AAAA... kata
 An unreachable host, a refused key, and a changed host key produce three different messages,
 because they need three different fixes. The refused-key case prints the public key to install.
 
+`network` chooses what carries the connection. The default follows the system's default route,
+which is mobile data for the first moments after a Wi-Fi join, and for as long as a Wi-Fi never
+validates, such as a home network whose internet is down. `network: wifi` binds the socket, and
+the host lookup, to the Wi-Fi network instead, so a local-network host is reachable at once. It
+fails with a message when the device has no Wi-Fi network.
+
 `tap_ui` is the escape hatch for everything with no API at all: it finds a node on screen by
 text, content description, or view id, walks up to the nearest clickable ancestor, and taps it.
 That is how you reach a Quick Settings tile the platform will not let an app toggle. It is
