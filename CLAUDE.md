@@ -414,7 +414,9 @@ otherwise match a Wi-Fi test.
 
 The same window reaches actions, where reading a different network is no help: a LAN address is
 unroutable over cellular, so the rule's own `ssh` check failed and stopped the run before the
-write it was gating. Hence the leading `wait` and the `retry` on that step.
+write it was gating. Hence the leading `wait` and the `retry` on that step. The `wifi_connected`
+doc string now says this too, because that string is what an authoring agent reads, and a rule
+written without it passes every hand-fired test.
 
 What makes this class of bug expensive is that every cheap test passes. Firing the rule by hand
 works, and so does the engine-start replay, because both run long after the switchover. Only a
