@@ -1,0 +1,52 @@
+{
+  "id": "next-alarm-to-workstation",
+  "name": "next-alarm-to-workstation",
+  "description": "Push the time the next alarm rings to the workstation each time it changes, so a tray icon there can show it without polling the phone. next_alarm_changed rides the system's own next-alarm broadcast, which fires whenever any alarm is created, edited, switched on or off, deleted, snoozed, or dismissed in a way that moves the soonest one, so the only added cost is one short SSH connection per change. It also fires once when the engine starts and on each Wi-Fi join, which is what puts the current value on the tray the moment the phone arrives home. Home is proved the way the other home rules prove it: the DHCP lease has to match and the SSH connection with kata's key has to succeed, so nothing is sent from any other network. The connection goes over the Wi-Fi network itself, because on a join the event fires before Wi-Fi is the default route. A lost push is retried only briefly, because the next change supersedes it. The workstation verb is `alarm <epoch ms>`, -1 when no alarm is set; its answer lands in the run record.",
+  "enabled": true,
+  "trigger": {
+    "type": "next_alarm_changed"
+  },
+  "conditions": [
+    {
+      "type": "ip_address",
+      "equals": "${params.ip}"
+    }
+  ],
+  "actions": [
+    {
+      "type": "ssh",
+      "host": "${params.host}",
+      "user": "${params.user}",
+      "command": "${params.verb} ${vars.next_alarm}",
+      "timeout_ms": 6000,
+      "retry": 2,
+      "network": "wifi"
+    }
+  ],
+  "params": [
+    {
+      "key": "ip",
+      "label": "Expected IPv4 address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "host",
+      "label": "Workstation address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "user",
+      "label": "Login name",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "verb",
+      "label": "Workstation verb that records the next alarm",
+      "type": "string",
+      "value": "alarm"
+    }
+  ]
+}

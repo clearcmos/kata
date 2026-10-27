@@ -1,0 +1,52 @@
+{
+  "id": "notifications-to-workstation",
+  "name": "notifications-to-workstation",
+  "description": "Tell the workstation each time the notification shade changes, so a tray widget there can mirror it without polling the phone. notifications_changed fires once per burst of changes, and not on the progress reposts of ongoing notifications such as media or downloads, so the cost is one short SSH connection per real change. It also fires on engine start and on each Wi-Fi join, which puts the current count on the tray the moment the phone arrives home. Only the count travels over SSH; the workstation reads the entries themselves over adb when this push arrives, and clears or opens them through kata's /notifications routes. Home is proved the way the other home rules prove it: the DHCP lease has to match and the SSH connection with kata's key has to succeed, so nothing is sent from any other network. The connection goes over the Wi-Fi network itself, because on a join the event fires before Wi-Fi is the default route. A lost push is retried only briefly, because the next change supersedes it. The workstation verb is `notifs <count>`; its answer lands in the run record.",
+  "enabled": true,
+  "trigger": {
+    "type": "notifications_changed"
+  },
+  "conditions": [
+    {
+      "type": "ip_address",
+      "equals": "${params.ip}"
+    }
+  ],
+  "actions": [
+    {
+      "type": "ssh",
+      "host": "${params.host}",
+      "user": "${params.user}",
+      "command": "${params.verb} ${vars.count}",
+      "timeout_ms": 6000,
+      "retry": 2,
+      "network": "wifi"
+    }
+  ],
+  "params": [
+    {
+      "key": "ip",
+      "label": "Expected IPv4 address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "host",
+      "label": "Workstation address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "user",
+      "label": "Login name",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "verb",
+      "label": "Workstation verb that records the shade's count",
+      "type": "string",
+      "value": "notifs"
+    }
+  ]
+}

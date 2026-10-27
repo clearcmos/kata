@@ -1,0 +1,52 @@
+{
+  "id": "battery-to-workstation",
+  "name": "battery-to-workstation",
+  "description": "Push the battery level to the workstation each time it changes, so a tray icon there can show it without polling the phone. battery_changed rides the system's own battery broadcast, which already fires on every percent and every plug or unplug, so the only added cost is one short SSH connection per change, none while the level is steady. It also fires once when the engine starts, which seeds the tray with the current reading. Home is proved the way the other home rules prove it: the DHCP lease has to match and the SSH connection with kata's key has to succeed, so nothing is sent from any other network. The connection goes over the Wi-Fi network itself, because on a join the event fires before Wi-Fi is the default route; battery_changed also fires on each Wi-Fi join, which is what puts the current level on the tray the moment the phone arrives home, since nothing else would send it until the next percent tick. A lost push is retried only briefly, because the next percent supersedes it. The workstation verb is `battery <level> <charging> <minutes_to_full>`, the last being Android's estimate of minutes until full while charging and -1 otherwise, which the tray shows in its tooltip; its answer lands in the run record.",
+  "enabled": true,
+  "trigger": {
+    "type": "battery_changed"
+  },
+  "conditions": [
+    {
+      "type": "ip_address",
+      "equals": "${params.ip}"
+    }
+  ],
+  "actions": [
+    {
+      "type": "ssh",
+      "host": "${params.host}",
+      "user": "${params.user}",
+      "command": "${params.verb} ${vars.level} ${vars.charging} ${vars.minutes_to_full}",
+      "timeout_ms": 6000,
+      "retry": 2,
+      "network": "wifi"
+    }
+  ],
+  "params": [
+    {
+      "key": "ip",
+      "label": "Expected IPv4 address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "host",
+      "label": "Workstation address",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "user",
+      "label": "Login name",
+      "type": "string",
+      "value": "CHANGE-ME"
+    },
+    {
+      "key": "verb",
+      "label": "Workstation verb that records the reading",
+      "type": "string",
+      "value": "battery"
+    }
+  ]
+}
