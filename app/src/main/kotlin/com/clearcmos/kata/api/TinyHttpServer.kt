@@ -185,7 +185,9 @@ class TinyHttpServer(private val port: Int, private val handler: (HttpRequest) -
         404 -> "Not Found"
         405 -> "Method Not Allowed"
         409 -> "Conflict"
+        410 -> "Gone"
         422 -> "Unprocessable Entity"
+        503 -> "Service Unavailable"
         else -> "Internal Server Error"
     }
 

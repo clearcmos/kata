@@ -37,10 +37,13 @@ import com.clearcmos.kata.engine.TriggerEvent
 class TriggerRegistry(private val context: Context, private val store: Store, private val engine: Engine) {
     private val alarmManager = context.getSystemService(AlarmManager::class.java)
     private val connectivityManager = context.getSystemService(ConnectivityManager::class.java)
+    private val batteryManager = context.getSystemService(BatteryManager::class.java)
 
     private var systemReceiver: BroadcastReceiver? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var lastBatteryLevel: Int? = null
+    private var lastCharging: Boolean? = null
+    private var lastNextAlarm: Long? = null
     private var announcedWifi: Network? = null
     private val scheduledAlarmIds = mutableSetOf<String>()
     private val settingObservers = mutableListOf<ContentObserver>()
@@ -53,6 +56,8 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
         registerNetworkCallback(needed)
         registerSettingObservers()
         scheduleAlarms()
+        // The listener announces changes itself; the engine start announces the shade as it is.
+        if ("notifications_changed" in needed) KataNotificationListener.announce(force = true)
     }
 
     fun stop() {
@@ -84,11 +89,13 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
         want("screen_on", Intent.ACTION_SCREEN_ON)
         want("screen_off", Intent.ACTION_SCREEN_OFF)
         want("battery_level", Intent.ACTION_BATTERY_CHANGED)
+        want("battery_changed", Intent.ACTION_BATTERY_CHANGED)
         want("headset_plugged", Intent.ACTION_HEADSET_PLUG)
         want("headset_unplugged", Intent.ACTION_HEADSET_PLUG)
         want("airplane_mode", Intent.ACTION_AIRPLANE_MODE_CHANGED)
         want("bluetooth_connected", BluetoothDevice.ACTION_ACL_CONNECTED)
         want("bluetooth_disconnected", BluetoothDevice.ACTION_ACL_DISCONNECTED)
+        want("next_alarm_changed", AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED)
         if (!any) return
 
         val receiver =
@@ -97,6 +104,9 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
             }
         context.registerReceiver(receiver, filter, Context.RECEIVER_NOT_EXPORTED)
         systemReceiver = receiver
+        // Unlike the battery broadcast this one is not sticky, so nothing would deliver the
+        // current value on registration.
+        if ("next_alarm_changed" in needed) emitNextAlarm(force = true)
     }
 
     private fun handleSystemBroadcast(intent: Intent) {
@@ -107,22 +117,15 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
             Intent.ACTION_SCREEN_OFF -> engine.onEvent(TriggerEvent("screen_off"))
 
             Intent.ACTION_BATTERY_CHANGED -> {
-                val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
-                val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
-                if (level < 0 || scale <= 0) return
-                val percent = level * 100 / scale
+                val (percent, charging) = readBattery(intent) ?: return
                 val previous = lastBatteryLevel
-                if (previous == percent) return
+                val levelMoved = previous != percent
+                if (!levelMoved && lastCharging == charging) return
                 lastBatteryLevel = percent
-                engine.onEvent(
-                    TriggerEvent(
-                        "battery_level",
-                        buildMap {
-                            put("level", percent.toString())
-                            previous?.let { put("prev_level", it.toString()) }
-                        }
-                    )
-                )
+                lastCharging = charging
+                val facts = batteryFacts(percent, previous, charging)
+                engine.onEvent(TriggerEvent("battery_changed", facts))
+                if (levelMoved) engine.onEvent(TriggerEvent("battery_level", facts))
             }
 
             Intent.ACTION_HEADSET_PLUG -> {
@@ -140,7 +143,21 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
 
             BluetoothDevice.ACTION_ACL_DISCONNECTED ->
                 emitBluetooth("bluetooth_disconnected", intent)
+
+            AlarmManager.ACTION_NEXT_ALARM_CLOCK_CHANGED -> emitNextAlarm(force = false)
         }
+    }
+
+    /**
+     * Publishes the next alarm clock. The broadcast also arrives when a clock app re-arms the
+     * same alarm, so those repeats are dropped unless `force`, which the engine start and each
+     * Wi-Fi join use to announce the value the phone already has.
+     */
+    private fun emitNextAlarm(force: Boolean) {
+        val next = alarmManager?.nextAlarmClock?.triggerTime ?: -1L
+        if (!force && next == lastNextAlarm) return
+        lastNextAlarm = next
+        engine.onEvent(TriggerEvent("next_alarm_changed", mapOf("next_alarm" to next.toString())))
     }
 
     private fun emitBluetooth(type: String, intent: Intent) {
@@ -158,12 +175,56 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
         engine.onEvent(TriggerEvent(type, facts))
     }
 
+    private fun readBattery(intent: Intent): Pair<Int, Boolean>? {
+        val level = intent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = intent.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        if (level < 0 || scale <= 0) return null
+        val status = intent.getIntExtra(BatteryManager.EXTRA_STATUS, -1)
+        val charging =
+            status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        return level * 100 / scale to charging
+    }
+
+    private fun batteryFacts(percent: Int, previous: Int?, charging: Boolean): Map<String, String> = buildMap {
+        put("level", percent.toString())
+        previous?.let { put("prev_level", it.toString()) }
+        put("charging", charging.toString())
+        put("minutes_to_full", minutesToFull(charging).toString())
+    }
+
+    /**
+     * Android's own estimate of the time to full, the figure `dumpsys batterystats` prints as
+     * "Estimated charge time remaining", rounded up to whole minutes. Always published, -1 when
+     * not charging or when the platform has no estimate, because a missing fact would reach a
+     * rule's command as an unresolved placeholder.
+     */
+    private fun minutesToFull(charging: Boolean): Long {
+        if (!charging) return -1
+        val millis = batteryManager?.computeChargeTimeRemaining() ?: -1
+        return if (millis < 0) -1 else (millis + 59_999) / 60_000
+    }
+
+    /**
+     * Announces the current reading without waiting for it to change. A rule that mirrors the
+     * battery elsewhere needs this on joining a network, because nothing else would send the
+     * level the phone already has until the next percent tick.
+     */
+    private fun emitCurrentBattery() {
+        val sticky = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return
+        val (percent, charging) = readBattery(sticky) ?: return
+        engine.onEvent(TriggerEvent("battery_changed", batteryFacts(percent, lastBatteryLevel, charging)))
+    }
+
     // -- wifi ---------------------------------------------------------------------------
 
     private fun registerNetworkCallback(needed: Set<String>) {
         networkCallback?.let { runCatching { connectivityManager?.unregisterNetworkCallback(it) } }
         networkCallback = null
-        if ("wifi_connected" !in needed && "wifi_disconnected" !in needed) return
+        val wantsBattery = "battery_changed" in needed
+        val wantsNextAlarm = "next_alarm_changed" in needed
+        val wantsShade = "notifications_changed" in needed
+        val mirrors = wantsBattery || wantsNextAlarm || wantsShade
+        if ("wifi_connected" !in needed && "wifi_disconnected" !in needed && !mirrors) return
 
         val request =
             NetworkRequest
@@ -185,6 +246,9 @@ class TriggerRegistry(private val context: Context, private val store: Store, pr
                             mapOf("ssid" to ssid)
                         }
                     engine.onEvent(TriggerEvent("wifi_connected", facts))
+                    if (wantsBattery) emitCurrentBattery()
+                    if (wantsNextAlarm) emitNextAlarm(force = true)
+                    if (wantsShade) KataNotificationListener.announce(force = true)
                 }
 
                 override fun onLost(network: Network) {

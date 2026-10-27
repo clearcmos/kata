@@ -93,14 +93,15 @@ generally assume the earlier ones landed.
 
 ## Vocabulary
 
-21 triggers, 13 conditions, 40 actions. `kata schema` prints all of them with their fields and
+24 triggers, 13 conditions, 40 actions. `kata schema` prints all of them with their fields and
 prerequisites. The short version:
 
 - **Triggers**: `manual`, `boot_completed`, `power_connected`, `power_disconnected`,
-  `battery_level`, `screen_on`, `screen_off`, `wifi_connected`, `wifi_disconnected`,
-  `bluetooth_connected`, `bluetooth_disconnected`, `headset_plugged`, `headset_unplugged`,
-  `airplane_mode`, `time_of_day`, `interval`, `notification_posted`, `notification_removed`,
-  `app_foreground`, `app_background`, `setting_changed`
+  `battery_level`, `battery_changed`, `next_alarm_changed`, `screen_on`, `screen_off`,
+  `wifi_connected`, `wifi_disconnected`, `bluetooth_connected`, `bluetooth_disconnected`,
+  `headset_plugged`, `headset_unplugged`, `airplane_mode`, `time_of_day`, `interval`,
+  `notification_posted`, `notification_removed`, `notifications_changed`, `app_foreground`,
+  `app_background`, `setting_changed`
 - **Conditions**: `time_between`, `day_of_week`, `battery_below`, `battery_above`, `charging`,
   `screen_on`, `wifi_ssid`, `ip_address`, `wifi_connected`, `bluetooth_connected`, `dnd_active`,
   `app_installed`, `app_foreground`
@@ -264,6 +265,11 @@ apps cannot.
 | POST | `/simulate` | inject a trigger event, get back what matched and every run record |
 | GET | `/runs` | recent runs, `?id=` and `?limit=` |
 | DELETE | `/runs` | clear the run log |
+| GET | `/notifications` | the shade's notifications in its order, with `count` of those not ongoing |
+| POST | `/notifications/clear` | clear one, body `{"key": ...}`, as a swipe in the shade would |
+| POST | `/notifications/clear_all` | clear every clearable notification |
+| POST | `/notifications/open` | send its content intent as a tap would, body `{"key": ...}`; answers `locked` |
+| GET | `/notifications/icon` | an app's launcher icon as base64 PNG, `?package=` |
 
 ## Setup
 

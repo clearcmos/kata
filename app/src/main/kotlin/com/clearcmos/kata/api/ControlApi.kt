@@ -3,13 +3,17 @@ package com.clearcmos.kata.api
 import android.content.Context
 import android.util.Log
 import com.clearcmos.kata.engine.Engine
+import com.clearcmos.kata.engine.Shade
 import com.clearcmos.kata.engine.TriggerEvent
 import com.clearcmos.kata.engine.TriggerMatcher
 import com.clearcmos.kata.model.ArgError
 import com.clearcmos.kata.model.Automation
 import com.clearcmos.kata.model.Json
+import com.clearcmos.kata.model.Requirement
 import com.clearcmos.kata.model.Validator
 import com.clearcmos.kata.model.Vocabulary
+import com.clearcmos.kata.triggers.ListenerShade
+import java.util.Base64
 import org.json.JSONObject
 
 /**
@@ -23,13 +27,15 @@ import org.json.JSONObject
 class ControlApi(
     private val engine: Engine,
     private val expectedToken: () -> String,
-    private val capabilities: CapabilityReporter
+    private val capabilities: CapabilityReporter,
+    private val shade: NotificationShade
 ) {
     /** Assembles the real collaborators; the primary constructor is what tests use. */
     constructor(context: Context, engine: Engine) : this(
         engine = engine,
         expectedToken = { ApiToken.get(context) },
-        capabilities = Capabilities(context)
+        capabilities = Capabilities(context),
+        shade = ListenerShade(context)
     )
 
     private val store get() = engine.store
@@ -142,6 +148,28 @@ class ControlApi(
             segments == listOf("runs") && request.method == "DELETE" -> {
                 runLog.clear()
                 ok(mapOf("cleared" to true))
+            }
+
+            // The phone's notification shade, so another machine can mirror it, clear from it,
+            // and open an entry on the phone the way a tap in the shade would.
+            segments == listOf("notifications") && request.method == "GET" -> {
+                val entries = shade.entries() ?: return unbound()
+                ok(mapOf("notifications" to entries.map { it.toMap() }, "count" to Shade.count(entries)))
+            }
+
+            segments == listOf("notifications", "clear") && request.method == "POST" ->
+                answer(shade.clear(keyOf(request)))
+
+            segments == listOf("notifications", "clear_all") && request.method == "POST" ->
+                answer(shade.clearAll())
+
+            segments == listOf("notifications", "open") && request.method == "POST" ->
+                answer(shade.open(keyOf(request)))
+
+            segments == listOf("notifications", "icon") && request.method == "GET" -> {
+                val pkg = request.query["package"] ?: throw ArgError("query needs package")
+                val png = shade.appIcon(pkg) ?: return error(404, "no installed package '$pkg'")
+                ok(mapOf("package" to pkg, "png" to Base64.getEncoder().encodeToString(png)))
             }
 
             else -> error(404, "no route for ${request.method} ${request.path}")
@@ -284,6 +312,20 @@ class ControlApi(
             )
         )
     }
+
+    private fun keyOf(request: HttpRequest): String = Json.toMap(JSONObject(request.body))["key"]?.toString()
+        ?: throw ArgError("body needs \"key\"")
+
+    private fun answer(outcome: ShadeOutcome): HttpResponse = when (outcome) {
+        is ShadeOutcome.Done -> ok(outcome.facts)
+        is ShadeOutcome.Refused -> error(outcome.status, outcome.reason)
+        ShadeOutcome.Unbound -> unbound()
+    }
+
+    private fun unbound() = error(
+        503,
+        "notification access is off for kata: ${capabilities.statusRemedy(Requirement.NOTIFICATION_LISTENER)}"
+    )
 
     // -- helpers ------------------------------------------------------------------------
 

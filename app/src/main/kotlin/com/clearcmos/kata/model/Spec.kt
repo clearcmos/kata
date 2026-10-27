@@ -125,6 +125,30 @@ object Vocabulary {
                     int("above", "Fire when the level rises to or over this percentage.", required = false)
                 )
             ),
+            TypeSpec(
+                "battery_changed",
+                SpecKind.TRIGGER,
+                "The battery percentage changed by any amount, or charging started or stopped. Also " +
+                    "fires with the current reading when the engine starts and each time Wi-Fi " +
+                    "connects, so a rule that mirrors the level to another machine learns it on " +
+                    "arrival. Publishes level (0 to 100), prev_level (absent on the first " +
+                    "reading), charging (true or false), and minutes_to_full (Android's " +
+                    "estimate of minutes until full while charging, rounded up; -1 when not " +
+                    "charging or when it has no estimate). The estimate is refreshed only when " +
+                    "this fires, so count it down from the reading's time. Use battery_level " +
+                    "instead for a single threshold crossing."
+            ),
+            TypeSpec(
+                "next_alarm_changed",
+                SpecKind.TRIGGER,
+                "The next alarm clock changed: the one the status bar's alarm icon points at, set " +
+                    "by any clock app, so creating, editing, enabling, disabling, deleting, " +
+                    "snoozing, or dismissing an alarm fires it whenever the soonest one moves. " +
+                    "Also fires with the current value when the engine starts and each time Wi-Fi " +
+                    "connects, so a rule that mirrors it to another machine learns it on arrival. " +
+                    "Publishes next_alarm, the time it rings in epoch milliseconds, or -1 when no " +
+                    "alarm is set. A change to an alarm that is not the soonest does not fire it."
+            ),
             TypeSpec("screen_on", SpecKind.TRIGGER, "The display turned on."),
             TypeSpec("screen_off", SpecKind.TRIGGER, "The display turned off."),
             TypeSpec(
@@ -226,6 +250,19 @@ object Vocabulary {
                 "An app left the foreground. Omit package to fire on every app switch.",
                 listOf(str("package", "Only fire when this package is the one being left.", required = false)),
                 listOf(Requirement.ACCESSIBILITY)
+            ),
+            TypeSpec(
+                "notifications_changed",
+                SpecKind.TRIGGER,
+                "The set of notifications the shade shows changed: one appeared, one was cleared, " +
+                    "or one changed its title or text. Ongoing notifications (media, downloads, " +
+                    "navigation) count only when they appear or go, not on each progress repost, " +
+                    "and a burst of changes within 1.5 s fires once. Also fires with the current " +
+                    "count when the engine starts, when notification access is bound, and each " +
+                    "time Wi-Fi connects, so a rule that mirrors the shade to another machine " +
+                    "learns it on arrival. Publishes count, the number of notifications that are " +
+                    "not ongoing. The entries themselves are read through GET /notifications.",
+                requires = listOf(Requirement.NOTIFICATION_LISTENER)
             ),
             TypeSpec(
                 "notification_removed",

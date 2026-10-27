@@ -67,6 +67,18 @@ class TriggerMatcherTest {
     }
 
     @Test
+    fun `battery_changed matches every reading`() {
+        val trigger = Step("battery_changed", Args.EMPTY)
+        assertTrue(
+            TriggerMatcher.matches(
+                trigger,
+                TriggerEvent("battery_changed", mapOf("level" to "71", "prev_level" to "70", "charging" to "false"))
+            )
+        )
+        assertTrue(TriggerMatcher.matches(trigger, TriggerEvent("battery_changed", mapOf("level" to "71"))))
+    }
+
+    @Test
     fun `battery_level above fires on the way up`() {
         val trigger = Step("battery_level", Args(mapOf("above" to 80)))
         assertTrue(

@@ -5,11 +5,14 @@ import com.clearcmos.kata.actions.ActionOutcome
 import com.clearcmos.kata.api.CapabilityReporter
 import com.clearcmos.kata.api.ControlApi
 import com.clearcmos.kata.api.HttpRequest
+import com.clearcmos.kata.api.NotificationShade
+import com.clearcmos.kata.api.ShadeOutcome
 import com.clearcmos.kata.engine.BluetoothPeer
 import com.clearcmos.kata.engine.ConditionEvaluator
 import com.clearcmos.kata.engine.DeviceReadings
 import com.clearcmos.kata.engine.Engine
 import com.clearcmos.kata.engine.RunLog
+import com.clearcmos.kata.engine.ShadeEntry
 import com.clearcmos.kata.engine.Store
 import com.clearcmos.kata.engine.VarStore
 import com.clearcmos.kata.model.Automation
@@ -55,12 +58,60 @@ private class StubCapabilities(private val unmet: List<Requirement> = emptyList(
     override fun snapshot() = mapOf("device" to mapOf("model" to "test"))
 }
 
+private fun entry(key: String, ongoing: Boolean = false) = ShadeEntry(
+    key = key,
+    packageName = "com.example",
+    app = "Example",
+    title = "Title $key",
+    text = "Text",
+    postedAt = 1_000L,
+    clearable = !ongoing,
+    ongoing = ongoing,
+    silent = false,
+    openable = true,
+    threadId = null,
+    threadType = null,
+    group = key,
+    groupSummary = false
+)
+
+/** A shade that holds entries in memory; null entries stand for an unbound listener. */
+private class StubShade(var shown: MutableList<ShadeEntry>? = mutableListOf()) : NotificationShade {
+    val opened = mutableListOf<String>()
+
+    override fun entries() = shown?.toList()
+
+    override fun clear(key: String): ShadeOutcome {
+        val list = shown ?: return ShadeOutcome.Unbound
+        val found = list.firstOrNull { it.key == key } ?: return ShadeOutcome.Refused(404, "gone")
+        if (!found.clearable) return ShadeOutcome.Refused(422, "ongoing")
+        list.remove(found)
+        return ShadeOutcome.Done(mapOf("cleared" to key))
+    }
+
+    override fun clearAll(): ShadeOutcome {
+        val list = shown ?: return ShadeOutcome.Unbound
+        val cleared = list.count { it.clearable }
+        list.removeAll { it.clearable }
+        return ShadeOutcome.Done(mapOf("cleared" to cleared))
+    }
+
+    override fun open(key: String): ShadeOutcome {
+        if (shown == null) return ShadeOutcome.Unbound
+        opened.add(key)
+        return ShadeOutcome.Done(mapOf("opened" to key, "locked" to false))
+    }
+
+    override fun appIcon(packageName: String) = if (packageName == "com.example") byteArrayOf(1, 2, 3) else null
+}
+
 class ControlApiTest {
     @get:Rule
     val temp = TemporaryFolder()
 
     private lateinit var engine: Engine
     private lateinit var api: ControlApi
+    private lateinit var shade: StubShade
 
     private val token = "correct-horse"
 
@@ -75,7 +126,8 @@ class ControlApiTest {
                 override fun execute(step: Step) = ActionOutcome("stubbed")
             }
         )
-        api = ControlApi(engine, { token }, StubCapabilities())
+        shade = StubShade()
+        api = ControlApi(engine, { token }, StubCapabilities(), shade)
     }
 
     @After
@@ -243,7 +295,7 @@ class ControlApiTest {
 
     @Test
     fun `validate surfaces unmet requirements alongside a valid rule`() {
-        val gated = ControlApi(engine, { token }, StubCapabilities(listOf(Requirement.DND_POLICY)))
+        val gated = ControlApi(engine, { token }, StubCapabilities(listOf(Requirement.DND_POLICY)), StubShade())
         val response = gated.handle(
             HttpRequest("POST", "/validate", emptyMap(), mapOf("x-kata-token" to token), simpleRule)
         )
@@ -360,5 +412,64 @@ class ControlApiTest {
         engine.vars().set("a", "1")
         assertEquals(200, call("DELETE", "/vars").status)
         assertEquals(emptyMap<String, String>(), engine.vars().all())
+    }
+
+    @Test
+    fun `the shade lists its entries and the count leaves out ongoing ones`() {
+        shade.shown = mutableListOf(entry("a"), entry("b", ongoing = true))
+        val body = json(call("GET", "/notifications").body)
+
+        @Suppress("UNCHECKED_CAST")
+        val listed = body["notifications"] as List<Map<String, Any?>>
+        assertEquals(listOf("a", "b"), listed.map { it["key"] })
+        assertEquals(1, body["count"])
+        assertEquals("Example", listed.first()["app"])
+    }
+
+    @Test
+    fun `an unbound listener answers 503 with the remedy`() {
+        shade.shown = null
+        val response = call("GET", "/notifications")
+        assertEquals(503, response.status)
+        assertTrue(json(response.body)["error"].toString().contains("do the thing"))
+        assertEquals(503, call("POST", "/notifications/clear", """{"key":"a"}""").status)
+    }
+
+    @Test
+    fun `clear removes one entry and refuses an ongoing or missing one`() {
+        shade.shown = mutableListOf(entry("a"), entry("b", ongoing = true))
+        assertEquals(200, call("POST", "/notifications/clear", """{"key":"a"}""").status)
+        assertEquals(422, call("POST", "/notifications/clear", """{"key":"b"}""").status)
+        assertEquals(404, call("POST", "/notifications/clear", """{"key":"zzz"}""").status)
+        assertEquals(listOf("b"), shade.shown!!.map { it.key })
+    }
+
+    @Test
+    fun `clear needs a key`() {
+        assertEquals(422, call("POST", "/notifications/clear", "{}").status)
+    }
+
+    @Test
+    fun `clear all keeps ongoing entries`() {
+        shade.shown = mutableListOf(entry("a"), entry("b"), entry("c", ongoing = true))
+        val response = call("POST", "/notifications/clear_all")
+        assertEquals(2, json(response.body)["cleared"])
+        assertEquals(listOf("c"), shade.shown!!.map { it.key })
+    }
+
+    @Test
+    fun `open passes the key through and reports the lock state`() {
+        val response = call("POST", "/notifications/open", """{"key":"a"}""")
+        assertEquals(200, response.status)
+        assertEquals(false, json(response.body)["locked"])
+        assertEquals(listOf("a"), shade.opened)
+    }
+
+    @Test
+    fun `an app icon comes back as base64 png`() {
+        val response = call("GET", "/notifications/icon", query = mapOf("package" to "com.example"))
+        assertEquals("AQID", json(response.body)["png"])
+        assertEquals(404, call("GET", "/notifications/icon", query = mapOf("package" to "nope")).status)
+        assertEquals(422, call("GET", "/notifications/icon").status)
     }
 }
